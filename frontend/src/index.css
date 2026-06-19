@@ -1,0 +1,726 @@
+/* --- Google Fonts ---------------------------------------------------------- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* --- Tailwind v4 ----------------------------------------------------------- */
+@import "tailwindcss";
+
+/* --- Design Tokens --------------------------------------------------------- */
+/*
+ * In Tailwind v4, ALL custom tokens are declared inside @theme.
+ * This replaces tailwind.config.js extend blocks entirely.
+ * CSS variables are auto-generated as --color-*, --font-*, --shadow-*, etc.
+ */
+@theme {
+  /* -- Fonts -------------------------------------------------------------- */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* -- Colors ------------------------------------------------------------- */
+  --color-surface:                  #f8fafc;
+  --color-surface-dim:              #cbdbf5;
+  --color-surface-bright:           #ffffff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low:    #eff4ff;
+  --color-surface-container:        #e5eeff;
+  --color-surface-container-high:   #dce9ff;
+  --color-surface-container-highest:#d3e4fe;
+  --color-surface-variant:          #d3e4fe;
+  --color-surface-tint:             #565e74;
+
+  --color-on-surface:               #0b1c30;
+  --color-on-surface-variant:       #45464d;
+
+  --color-inverse-surface:          #213145;
+  --color-inverse-on-surface:       #eaf1ff;
+
+  --color-outline:                  #76777d;
+  --color-outline-variant:          #e2e8f0;
+
+  --color-background:               #f8fafc;
+  --color-on-background:            #0b1c30;
+
+  /* Primary */
+  --color-primary:                  #131b2e;
+  --color-on-primary:               #ffffff;
+  --color-primary-container:        #dae2fd;
+  --color-on-primary-container:     #131b2e;
+  --color-inverse-primary:          #bec6e0;
+  --color-primary-fixed:            #dae2fd;
+  --color-primary-fixed-dim:        #bec6e0;
+  --color-on-primary-fixed:         #131b2e;
+  --color-on-primary-fixed-variant: #3f465c;
+
+  /* Secondary */
+  --color-secondary:                #006a61;
+  --color-on-secondary:             #ffffff;
+  --color-secondary-container:      #86f2e4;
+  --color-on-secondary-container:   #00201d;
+  --color-secondary-fixed:          #89f5e7;
+  --color-secondary-fixed-dim:      #6bd8cb;
+  --color-on-secondary-fixed:       #00201d;
+  --color-on-secondary-fixed-variant:#005049;
+
+  /* Tertiary */
+  --color-tertiary:                 #3980f4;
+  --color-on-tertiary:              #ffffff;
+  --color-tertiary-container:       #d8e2ff;
+  --color-on-tertiary-container:    #001a42;
+  --color-tertiary-fixed:           #d8e2ff;
+  --color-tertiary-fixed-dim:       #adc6ff;
+  --color-on-tertiary-fixed:        #001a42;
+  --color-on-tertiary-fixed-variant:#004395;
+
+  /* Semantic */
+  --color-success:                  #059669;
+  --color-on-success:               #ffffff;
+  --color-success-container:        #d1fae5;
+  --color-on-success-container:     #064e3b;
+
+  --color-warning:                  #f59e0b;
+  --color-on-warning:               #ffffff;
+  --color-warning-container:        #fef3c7;
+  --color-on-warning-container:     #78350f;
+
+  --color-error:                    #e11d48;
+  --color-on-error:                 #ffffff;
+  --color-error-container:          #ffe4e6;
+  --color-on-error-container:       #881337;
+
+  /* -- Typography Scale --------------------------------------------------- */
+  --text-display-lg:        3rem;       /* 48px */
+  --text-display-lg--line-height: 3.5rem;
+  --text-display-lg--letter-spacing: -0.02em;
+  --text-display-lg--font-weight: 700;
+
+  --text-headline-lg:       2rem;       /* 32px */
+  --text-headline-lg--line-height: 2.5rem;
+  --text-headline-lg--letter-spacing: -0.01em;
+  --text-headline-lg--font-weight: 600;
+
+  --text-headline-md:       1.5rem;     /* 24px */
+  --text-headline-md--line-height: 2rem;
+  --text-headline-md--font-weight: 600;
+
+  --text-headline-sm:       1.25rem;    /* 20px */
+  --text-headline-sm--line-height: 1.75rem;
+  --text-headline-sm--font-weight: 600;
+
+  --text-headline-lg-mobile: 1.75rem;  /* 28px */
+  --text-headline-lg-mobile--line-height: 2.25rem;
+  --text-headline-lg-mobile--font-weight: 600;
+
+  --text-body-lg:           1.125rem;  /* 18px */
+  --text-body-lg--line-height: 1.75rem;
+
+  --text-body-md:           1rem;      /* 16px */
+  --text-body-md--line-height: 1.5rem;
+
+  --text-body-sm:           0.875rem;  /* 14px */
+  --text-body-sm--line-height: 1.25rem;
+
+  --text-label-md:          0.875rem;  /* 14px */
+  --text-label-md--line-height: 1rem;
+  --text-label-md--letter-spacing: 0.02em;
+  --text-label-md--font-weight: 500;
+
+  --text-label-sm:          0.75rem;   /* 12px */
+  --text-label-sm--line-height: 0.875rem;
+  --text-label-sm--letter-spacing: 0.05em;
+  --text-label-sm--font-weight: 500;
+
+  /* -- Border Radius ------------------------------------------------------ */
+  --radius-sm:   0.25rem;   /* 4px  - badges */
+  --radius:      0.5rem;    /* 8px  - buttons, inputs */
+  --radius-md:   0.75rem;   /* 12px - cards, modals */
+  --radius-lg:   1rem;
+  --radius-xl:   1.5rem;
+  --radius-full: 9999px;
+
+  /* -- Spacing ------------------------------------------------------------ */
+  --spacing-unit:              4px;
+  --spacing-container-padding: 32px;
+  --spacing-gutter:            16px;
+  --spacing-section-gap:       40px;
+  --spacing-density-high:      8px;
+  --spacing-density-medium:    16px;
+  --spacing-density-low:       24px;
+  --spacing-card-padding:      24px;
+  --spacing-selection:         4px;
+
+  /* -- Shadows ------------------------------------------------------------ */
+  --shadow-level-1:   none;
+  --shadow-level-2:   0px 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-level-3:   0px 16px 40px rgba(15, 23, 42, 0.16);
+  --shadow-focus-ring: 0 0 0 2px rgba(0, 106, 97, 0.2);
+
+  /* -- Blur --------------------------------------------------------------- */
+  --blur-modal-backdrop: 12px;
+  --blur-nav-overlay:    16px;
+
+  /* -- Z-index ------------------------------------------------------------ */
+  --z-modal: 50;
+  --z-toast: 60;
+
+  /* -- Sidebar width ------------------------------------------------------ */
+  --width-sidebar: 280px;
+
+  /* -- Animations --------------------------------------------------------- */
+  --animate-scale-in: scale-in 150ms ease-out;
+  --animate-shimmer:  shimmer 1.6s linear infinite;
+}
+
+/* --- Keyframes ------------------------------------------------------------- */
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* --- Base Resets ----------------------------------------------------------- */
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing:  antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering:          optimizeLegibility;
+    scroll-behavior:         smooth;
+  }
+
+  body {
+    font-family:      var(--font-sans);
+    font-size:        16px;
+    line-height:      1.5;
+    color:            var(--color-on-surface);
+    background-color: var(--color-background);
+    min-height:       100dvh;
+  }
+
+  ul, ol {
+    list-style: none;
+    margin:     0;
+    padding:    0;
+  }
+
+  :focus {
+    outline: none;
+  }
+
+  :focus-visible {
+    outline:        2px solid var(--color-secondary);
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar {
+    width:  6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background:    var(--color-outline-variant);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-outline);
+  }
+
+  ::selection {
+    background-color: var(--color-secondary-container);
+    color:            var(--color-on-secondary-container);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family:  var(--font-sans);
+    font-weight:  600;
+    line-height:  1.25;
+    color:        var(--color-on-surface);
+    margin:       0;
+  }
+
+  p { margin: 0; }
+
+  a {
+    color:           var(--color-tertiary);
+    text-decoration: none;
+    transition:      color 200ms ease;
+  }
+
+  a:hover {
+    color: var(--color-secondary);
+  }
+
+  img, svg {
+    display:   block;
+    max-width: 100%;
+    height:    auto;
+  }
+
+  button {
+    cursor:      pointer;
+    font-family: var(--font-sans);
+  }
+
+  input, textarea, select {
+    font-family: var(--font-sans);
+  }
+
+  code, kbd, samp, pre,
+  .font-mono,
+  [data-mono] {
+    font-family: var(--font-mono);
+  }
+
+  /* Remove number input spinners */
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    appearance:         none;
+    margin:             0;
+  }
+
+  input[type='number'] {
+    -moz-appearance: textfield;
+    appearance:      textfield;
+  }
+
+  table {
+    border-collapse: collapse;
+    width:           100%;
+  }
+}
+
+/* --- Component Layer ------------------------------------------------------- */
+/*
+ * In Tailwind v4, @apply still works inside @layer components.
+ * However, custom token names (colors, shadows, text sizes) must match
+ * the keys declared in @theme above — e.g. bg-surface-bright, text-body-sm.
+ * The `theme()` function is NOT available in v4; use var(--*) instead.
+ */
+@layer components {
+
+  /* -- Skeleton Loader ---------------------------------------------------- */
+  .skeleton {
+    border-radius:    var(--radius);
+    background-color: var(--color-surface-container-high);
+    background-image: linear-gradient(
+      90deg,
+      var(--color-surface-container-high)    25%,
+      var(--color-surface-container-highest) 50%,
+      var(--color-surface-container-high)    75%
+    );
+    background-size: 200% 100%;
+    animation:       var(--animate-shimmer);
+  }
+
+  /* -- Status Badge ------------------------------------------------------- */
+  /* In v4, @apply cannot reference custom component classes, so each
+     variant shares base styles via a grouped selector. */
+
+  .badge,
+  .badge-success,
+  .badge-warning,
+  .badge-error,
+  .badge-info,
+  .badge-neutral {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 font-mono;
+    border-radius:  var(--radius-sm);
+    font-size:      var(--text-label-sm);
+    line-height:    var(--text-label-sm--line-height);
+    font-weight:    var(--text-label-sm--font-weight);
+    letter-spacing: var(--text-label-sm--letter-spacing);
+  }
+
+  .badge-success {
+    background-color: var(--color-success-container);
+    color:            var(--color-on-success-container);
+  }
+
+  .badge-warning {
+    background-color: var(--color-warning-container);
+    color:            var(--color-on-warning-container);
+  }
+
+  .badge-error {
+    background-color: var(--color-error-container);
+    color:            var(--color-on-error-container);
+  }
+
+  .badge-info {
+    background-color: var(--color-tertiary-container);
+    color:            var(--color-on-tertiary-container);
+  }
+
+  .badge-neutral {
+    background-color: var(--color-surface-container-high);
+    color:            var(--color-on-surface-variant);
+  }
+
+  /* -- Button Base -------------------------------------------------------- */
+  /* .btn is kept as a standalone class for direct use in HTML */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2
+           font-medium transition-all duration-200
+           disabled:pointer-events-none disabled:opacity-50
+           focus-visible:outline-none;
+    border-radius: var(--radius);
+    font-family:   var(--font-sans);
+    font-size:     var(--text-body-sm);
+    line-height:   var(--text-body-sm--line-height);
+    &:focus-visible {
+      box-shadow: 0 0 0 2px var(--color-secondary), 0 0 0 3px var(--color-surface-bright);
+    }
+  }
+
+  /* Shared base styles for all btn variants */
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost,
+  .btn-danger,
+  .btn-tertiary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2
+           font-medium transition-all duration-200 active:scale-[0.98]
+           disabled:pointer-events-none disabled:opacity-50
+           focus-visible:outline-none;
+    border-radius: var(--radius);
+    font-family:   var(--font-sans);
+    font-size:     var(--text-body-sm);
+    line-height:   var(--text-body-sm--line-height);
+    &:focus-visible {
+      box-shadow: 0 0 0 2px var(--color-secondary), 0 0 0 3px var(--color-surface-bright);
+    }
+  }
+
+  .btn-primary {
+    background-color: var(--color-primary);
+    color:            var(--color-on-primary);
+    &:hover { background-color: var(--color-on-primary-fixed-variant); }
+  }
+
+  .btn-secondary {
+    background-color: var(--color-secondary);
+    color:            var(--color-on-secondary);
+    &:hover { opacity: 0.9; }
+  }
+
+  .btn-ghost {
+    border: 1px solid var(--color-outline-variant);
+    color:  var(--color-on-surface);
+    &:hover { background-color: var(--color-surface-container); }
+  }
+
+  .btn-danger {
+    background-color: var(--color-error);
+    color:            var(--color-on-error);
+    &:hover { opacity: 0.9; }
+  }
+
+  .btn-tertiary {
+    color: var(--color-secondary);
+    &:hover { background-color: var(--color-secondary-container); }
+  }
+
+  .btn-sm {
+    padding:   6px 12px;
+    font-size: var(--text-label-md);
+  }
+
+  .btn-lg {
+    padding:   12px 24px;
+    font-size: var(--text-body-md);
+  }
+
+  /* -- Input Field -------------------------------------------------------- */
+  .input {
+    @apply w-full px-3 py-2 transition-all duration-200
+           disabled:cursor-not-allowed disabled:opacity-50;
+    border-radius:    var(--radius);
+    border:           1px solid var(--color-outline-variant);
+    background-color: var(--color-surface-bright);
+    font-family:      var(--font-sans);
+    font-size:        var(--text-body-md);
+    line-height:      var(--text-body-md--line-height);
+    color:            var(--color-on-surface);
+
+    &::placeholder {
+      color: var(--color-on-surface-variant);
+    }
+
+    &:focus {
+      outline:    none;
+      border-color: var(--color-secondary);
+      box-shadow: var(--shadow-focus-ring);
+    }
+
+    &:disabled {
+      background-color: var(--color-surface-container);
+    }
+  }
+
+  .input-error {
+    border-color: var(--color-error);
+    &:focus {
+      border-color: var(--color-error);
+      box-shadow:   0 0 0 2px rgba(225, 29, 72, 0.2);
+    }
+  }
+
+  /* -- Card --------------------------------------------------------------- */
+  .card {
+    border-radius:    var(--radius-md);
+    border:           1px solid var(--color-outline-variant);
+    background-color: var(--color-surface-bright);
+    padding:          var(--spacing-card-padding);
+  }
+
+  .card-hover {
+    @apply transition-shadow duration-200;
+    border-radius:    var(--radius-md);
+    border:           1px solid var(--color-outline-variant);
+    background-color: var(--color-surface-bright);
+    padding:          var(--spacing-card-padding);
+    &:hover { box-shadow: var(--shadow-level-2); }
+  }
+
+  /* -- Data Table --------------------------------------------------------- */
+  .data-table {
+    @apply w-full;
+    font-size:   var(--text-body-sm);
+    line-height: var(--text-body-sm--line-height);
+  }
+
+  .data-table thead tr {
+    border-bottom:    1px solid var(--color-outline-variant);
+    background-color: var(--color-surface-container-low);
+  }
+
+  .data-table thead th {
+    @apply px-4 text-left select-none uppercase tracking-wider;
+    padding-top:    var(--spacing-density-high);
+    padding-bottom: var(--spacing-density-high);
+    font-family:    var(--font-mono);
+    font-size:      var(--text-label-md);
+    font-weight:    var(--text-label-md--font-weight);
+    letter-spacing: var(--text-label-md--letter-spacing);
+    color:          var(--color-on-surface-variant);
+  }
+
+  .data-table tbody tr {
+    border-bottom: 1px solid var(--color-outline-variant);
+    transition:    background-color 100ms ease;
+    &:hover { background-color: var(--color-surface-container-low); }
+  }
+
+  .data-table tbody td {
+    @apply px-4;
+    padding-top:    var(--spacing-density-high);
+    padding-bottom: var(--spacing-density-high);
+    color:          var(--color-on-surface);
+  }
+
+  /* -- Sidebar Nav Item --------------------------------------------------- */
+  .nav-item {
+    @apply relative flex items-center gap-3 transition-all duration-200;
+    border-radius:  var(--radius);
+    padding:        10px 12px;
+    font-size:      var(--text-body-sm);
+    font-weight:    500;
+    color:          color-mix(in srgb, var(--color-inverse-on-surface) 70%, transparent);
+
+    &:hover {
+      background-color: rgba(255, 255, 255, 0.1);
+      color:            var(--color-inverse-on-surface);
+    }
+  }
+
+  .nav-item-active {
+    @apply relative flex items-center gap-3 transition-all duration-200;
+    border-radius:    var(--radius);
+    padding:          10px 12px;
+    font-size:        var(--text-body-sm);
+    font-weight:      500;
+    background-color: rgba(255, 255, 255, 0.1);
+    color:            var(--color-inverse-on-surface);
+
+    /* 4px left-border accent */
+    &::before {
+      content:          '';
+      position:         absolute;
+      left:             0;
+      top:              50%;
+      transform:        translateY(-50%);
+      width:            var(--spacing-selection);
+      height:           32px;
+      border-radius:    0 var(--radius-sm) var(--radius-sm) 0;
+      background-color: var(--color-secondary);
+    }
+  }
+
+  /* -- Page Section ------------------------------------------------------- */
+  .page-header {
+    @apply mb-6 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between;
+  }
+
+  .page-title {
+    font-size:   var(--text-headline-md);
+    line-height: var(--text-headline-md--line-height);
+    font-weight: var(--text-headline-md--font-weight);
+    color:       var(--color-on-surface);
+  }
+
+  .page-subtitle {
+    font-size:   var(--text-body-sm);
+    line-height: var(--text-body-sm--line-height);
+    color:       var(--color-on-surface-variant);
+  }
+
+  /* -- Empty State -------------------------------------------------------- */
+  .empty-state {
+    @apply flex flex-col items-center justify-center py-16 text-center;
+  }
+
+  .empty-state-icon {
+    @apply mb-4 flex h-16 w-16 items-center justify-center;
+    border-radius:    var(--radius-md);
+    background-color: var(--color-surface-container);
+    color:            var(--color-on-surface-variant);
+  }
+
+  .empty-state-title {
+    @apply mb-1;
+    font-size:   var(--text-headline-sm);
+    line-height: var(--text-headline-sm--line-height);
+    font-weight: var(--text-headline-sm--font-weight);
+    color:       var(--color-on-surface);
+  }
+
+  .empty-state-body {
+    font-size:   var(--text-body-sm);
+    line-height: var(--text-body-sm--line-height);
+    color:       var(--color-on-surface-variant);
+  }
+
+  /* -- Modal Overlay ------------------------------------------------------ */
+  .modal-overlay {
+    @apply fixed inset-0 flex items-center justify-center;
+    z-index:          var(--z-modal);
+    background-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+    backdrop-filter:  blur(var(--blur-modal-backdrop));
+  }
+
+  .modal-panel {
+    @apply relative w-full max-w-lg;
+    border-radius:    var(--radius-md);
+    background-color: var(--color-surface-bright);
+    box-shadow:       var(--shadow-level-3);
+    animation:        var(--animate-scale-in);
+  }
+
+  /* -- Toast Container ---------------------------------------------------- */
+  .toast-container {
+    @apply fixed bottom-4 right-4 flex flex-col gap-2;
+    z-index: var(--z-toast);
+  }
+
+  /* -- Divider ------------------------------------------------------------ */
+  .divider {
+    height:           1px;
+    width:            100%;
+    background-color: var(--color-outline-variant);
+  }
+
+  /* -- Scrollable Table Wrapper ------------------------------------------- */
+  .table-wrapper {
+    @apply w-full overflow-x-auto;
+    border-radius:    var(--radius-md);
+    border:           1px solid var(--color-outline-variant);
+    background-color: var(--color-surface-bright);
+  }
+}
+
+/* --- Custom Utilities ------------------------------------------------------ */
+/*
+ * In Tailwind v4, custom utilities are declared with @utility (not @layer utilities).
+ * These become first-class Tailwind utilities and support modifiers like hover:, sm:, etc.
+ */
+
+@utility py-density-high {
+  padding-top:    var(--spacing-density-high);
+  padding-bottom: var(--spacing-density-high);
+}
+
+@utility py-density-medium {
+  padding-top:    var(--spacing-density-medium);
+  padding-bottom: var(--spacing-density-medium);
+}
+
+@utility py-density-low {
+  padding-top:    var(--spacing-density-low);
+  padding-bottom: var(--spacing-density-low);
+}
+
+@utility w-sidebar {
+  width: var(--width-sidebar);
+}
+
+@utility min-w-sidebar {
+  min-width: var(--width-sidebar);
+}
+
+@utility w-selection {
+  width: var(--spacing-selection);
+}
+
+@utility line-clamp-1 {
+  overflow:          hidden;
+  display:           -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+@utility line-clamp-2 {
+  overflow:          hidden;
+  display:           -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+@utility line-clamp-3 {
+  overflow:          hidden;
+  display:           -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+@utility data-value {
+  font-family:     var(--font-mono);
+  font-size:       12px;
+  letter-spacing:  0.05em;
+  font-weight:     500;
+}
+
+@utility stagger-1 { animation-delay: 50ms;  }
+@utility stagger-2 { animation-delay: 100ms; }
+@utility stagger-3 { animation-delay: 150ms; }
+@utility stagger-4 { animation-delay: 200ms; }
+@utility stagger-5 { animation-delay: 250ms; }
+@utility stagger-6 { animation-delay: 300ms; }
+
+@utility scrollbar-hidden {
+  scrollbar-width:    none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}

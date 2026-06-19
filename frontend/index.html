@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+
+    <!-- ── Primary Meta ───────────────────────────────────────────── -->
+    <title>EventSphere Management</title>
+    <meta
+      name="description"
+      content="Enterprise event logistics platform for organisers, exhibitors, and attendees."
+    />
+    <meta name="theme-color" content="#131b2e" />
+    <meta name="color-scheme" content="light" />
+
+    <!-- ── Open Graph ─────────────────────────────────────────────── -->
+    <meta property="og:type"        content="website" />
+    <meta property="og:title"       content="EventSphere Management" />
+    <meta property="og:description" content="Enterprise event logistics platform." />
+    <meta property="og:site_name"   content="EventSphere" />
+
+    <!-- ── Favicon ───────────────────────────────────────────────── -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png"     href="/favicon.png" />
+    <link rel="apple-touch-icon"          href="/apple-touch-icon.png" />
+
+    <!-- ── Font preconnect (Google Fonts CDN) ─────────────────────── -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!--
+      Note: the actual @import is in src/styles/index.css via Tailwind base.
+      Preconnect here ensures DNS/TLS is resolved before the CSS fires.
+    -->
+
+    <!-- ── Prevent FOUC on load ──────────────────────────────────── -->
+    <style>
+      /* Minimal blocking style — prevents a white flash before Tailwind loads */
+      html { background-color: #f8fafc; }
+      body { margin: 0; }
+
+      /* Global loading spinner shown until React hydrates */
+      #root-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #131b2e;
+        z-index: 9999;
+        gap: 1rem;
+        transition: opacity 0.3s ease;
+      }
+
+      #root-loader.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      #root-loader-ring {
+        width: 40px;
+        height: 40px;
+        border: 2px solid rgba(255,255,255,0.1);
+        border-top-color: #006a61;
+        border-radius: 50%;
+        animation: spin 0.9s linear infinite;
+      }
+
+      #root-loader-text {
+        font-family: 'JetBrains Mono', 'Courier New', monospace;
+        font-size: 11px;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: rgba(234, 241, 255, 0.35);
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+  </head>
+
+  <body>
+
+    <!-- ── Initial loading overlay (removed by React on first render) ── -->
+    <div id="root-loader" aria-hidden="true">
+      <div id="root-loader-ring"></div>
+      <span id="root-loader-text">EventSphere</span>
+    </div>
+
+    <!-- ── React mount point ─────────────────────────────────────── -->
+    <div id="root"></div>
+
+    <!-- ── Remove loader once JS bundle executes ─────────────────── -->
+    <script>
+      // The React app calls PageLoader for auth hydration.
+      // This script just clears the HTML-level spinner so there
+      // is no double-spinner overlap.
+      document.addEventListener('DOMContentLoaded', function () {
+        var loader = document.getElementById('root-loader');
+        if (loader) {
+          // Short delay gives React time to paint its own loader
+          setTimeout(function () {
+            loader.classList.add('hidden');
+            setTimeout(function () {
+              loader.remove();
+            }, 350);
+          }, 100);
+        }
+      });
+    </script>
+
+    <!-- ── Vite entry ─────────────────────────────────────────────── -->
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

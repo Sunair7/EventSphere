@@ -16,6 +16,10 @@ const {
   releaseBooth,
   lockBooth,
   getAvailabilitySummary,
+  getPublicGrid,
+  generateBooths,   
+  regenerateBooths,
+  cancelBoothReservation,
 } = require('../controllers/Booth.controller');
 
 const {
@@ -23,6 +27,7 @@ const {
   authorizeRoles,
   optionalAuth,
   requireProfileComplete,
+  requireEmailVerified,
 } = require('../middleware/Auth.middleware');
 
 const { BOOTH_STATUSES, BOOTH_SIZES, BOOTH_TYPES } = require('../models/Booth');
@@ -230,6 +235,14 @@ router.get(
   getAvailabilitySummary
 );
 
+// Public — lightweight booth occupancy grid for attendees
+router.get(
+  '/expo/:expoId/public-grid',
+  optionalAuth,
+  mongoId('expoId'),
+  getPublicGrid
+);
+
 // Admin — full paginated booth list for the management table
 router.get(
   '/expo/:expoId',
@@ -284,6 +297,7 @@ router.post(
   '/:id/lock',
   protect,
   authorizeRoles('exhibitor'),
+  requireEmailVerified,
   requireProfileComplete,
   mongoId('id'),
   lockBooth
@@ -294,9 +308,19 @@ router.post(
   '/:id/reserve',
   protect,
   authorizeRoles('exhibitor'),
+  requireEmailVerified,
   requireProfileComplete,
   mongoId('id'),
   reserveBooth
+);
+
+router.delete(
+  '/:id/cancel',
+  protect,
+  authorizeRoles('exhibitor'),
+  requireEmailVerified,
+  mongoId('id'),
+  cancelBoothReservation
 );
 
 // Admin — approve reservation (pending → assigned)
@@ -324,6 +348,24 @@ router.patch(
   authorizeRoles('admin'),
   approveRejectValidation,
   releaseBooth
+);
+
+// Admin — generate booths for an expo
+router.post(
+  '/expo/:expoId/generate',
+  protect,
+  authorizeRoles('admin'),
+  mongoId('expoId'),
+  generateBooths
+);
+
+// Admin — regenerate booths (clear and recreate)
+router.post(
+  '/expo/:expoId/regenerate',
+  protect,
+  authorizeRoles('admin'),
+  mongoId('expoId'),
+  regenerateBooths
 );
 
 module.exports = router;

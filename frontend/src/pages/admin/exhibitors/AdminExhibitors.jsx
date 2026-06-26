@@ -1,12 +1,12 @@
-import { useState, useCallback }              from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Link, useSearchParams }              from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence }            from 'framer-motion';
+import { motion, AnimatePresence, useInView } from 'framer-motion';
 import {
   Search, X, Building2, Eye, CheckCircle2,
   XCircle, AlertCircle, RefreshCw, ChevronLeft,
   ChevronRight, MoreVertical, ShieldCheck,
-  Clock, Ban,
+  Clock, Ban, Sparkles,
 } from 'lucide-react';
 import toast                                  from 'react-hot-toast';
 import api                                    from '@/utils/api';
@@ -17,6 +17,28 @@ const exhibitorKeys = {
   all:  ['exhibitors'],
   list: (params) => [...exhibitorKeys.all, 'list', params],
 };
+
+// ─── Animated Counter (inline) ────────────────────────────────────────────────
+function CountUp({ end, duration = 1 }) {
+  const [display, setDisplay] = useState(0);
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true });
+
+  useEffect(() => {
+    if (!inView || !end) return;
+    let startTime;
+    const step = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / (duration * 1000), 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.floor(end * eased));
+      if (progress < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, [inView, end, duration]);
+
+  return <span ref={ref} className="tabular-nums">{display.toLocaleString()}</span>;
+}
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_TABS = [
@@ -113,9 +135,14 @@ function ConfirmModal({ action, exhibitor, onConfirm, onCancel, isMutating }) {
         transition={{ duration: 0.18 }}
         className="modal-panel max-w-md p-6"
       >
-        <div className={cn('mb-4 flex h-10 w-10 items-center justify-center rounded-md', config.iconBg)}>
+        <motion.div
+          initial={{ rotate: -10, scale: 0 }}
+          animate={{ rotate: 0, scale: 1 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 20, delay: 0.1 }}
+          className={cn('mb-4 flex h-10 w-10 items-center justify-center rounded-md', config.iconBg)}
+        >
           <Icon size={18} className={config.iconFg} />
-        </div>
+        </motion.div>
         <h2 className="mb-1 text-headline-sm font-semibold text-on-surface">{config.title}</h2>
         <p className="mb-5 text-body-sm text-on-surface-variant">{config.body}</p>
 
@@ -133,9 +160,20 @@ function ConfirmModal({ action, exhibitor, onConfirm, onCancel, isMutating }) {
             <button onClick={onCancel} disabled={isMutating} className="btn-ghost">
               Cancel
             </button>
-            <button onClick={() => onConfirm(null)} disabled={isMutating} className={config.btn}>
-              {isMutating ? 'Processing…' : config.label}
-            </button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => onConfirm(null)}
+              disabled={isMutating}
+              className={config.btn}
+            >
+              {isMutating ? (
+                <span className="flex items-center gap-2">
+                  <RefreshCw size={14} className="animate-spin-slow" />
+                  Processing…
+                </span>
+              ) : config.label}
+            </motion.button>
           </div>
         )}
       </motion.div>
@@ -169,13 +207,20 @@ function ReasonForm({ onSubmit, onCancel, isMutating, btnClass, btnLabel, requir
         <button onClick={onCancel} disabled={isMutating} className="btn-ghost">
           Cancel
         </button>
-        <button
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
           onClick={() => onSubmit(note || null)}
           disabled={isMutating || (required && !note.trim())}
           className={btnClass}
         >
-          {isMutating ? 'Processing…' : btnLabel}
-        </button>
+          {isMutating ? (
+            <span className="flex items-center gap-2">
+              <RefreshCw size={14} className="animate-spin-slow" />
+              Processing…
+            </span>
+          ) : btnLabel}
+        </motion.button>
       </div>
     </div>
   );
@@ -188,7 +233,9 @@ function RowActions({ exhibitor, onAction }) {
 
   return (
     <div className="relative">
-      <button
+      <motion.button
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
         onClick={() => setOpen((v) => !v)}
         className="rounded p-1.5 text-on-surface-variant hover:bg-surface-container
                    hover:text-on-surface transition-colors"
@@ -197,7 +244,7 @@ function RowActions({ exhibitor, onAction }) {
         aria-expanded={open}
       >
         <MoreVertical size={16} />
-      </button>
+      </motion.button>
 
       <AnimatePresence>
         {open && (
@@ -213,7 +260,7 @@ function RowActions({ exhibitor, onAction }) {
               exit={{ opacity: 0, scale: 0.95, y: -4     }}
               transition={{ duration: 0.12 }}
               className="absolute right-0 top-8 z-50 min-w-[180px] rounded-md border
-                         border-outline-variant bg-surface-bright shadow-level-2"
+                         border-outline-variant bg-surface-bright shadow-level-2 overflow-hidden"
             >
               <Link
                 to={`/admin/exhibitors/${exhibitor._id}`}
@@ -273,7 +320,7 @@ function RowActions({ exhibitor, onAction }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function AdminExhibitors() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [modal, setModal]               = useState(null); // { action, exhibitor }
+  const [modal, setModal]               = useState(null);
   const queryClient                     = useQueryClient();
 
   const page   = parseInt(searchParams.get('page')   || '1', 10);
@@ -281,7 +328,6 @@ export default function AdminExhibitors() {
   const status = searchParams.get('status') || '';
   const LIMIT  = 15;
 
-  // ── Fetch exhibitors ────────────────────────────────────────────────────────
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: exhibitorKeys.list({ page, search, status, limit: LIMIT }),
     queryFn:  async () => {
@@ -297,10 +343,11 @@ export default function AdminExhibitors() {
     keepPreviousData: true,
   });
 
-  // ── Mutations ────────────────────────────────────────────────────────────────
   const mutationConfig = (action) => ({
     onSuccess: () => {
-      toast.success(`Exhibitor ${action}d successfully.`);
+      toast.success(`Exhibitor ${action}d successfully.`, {
+        icon: action === 'approve' ? '✅' : action === 'reject' ? '❌' : '⚠️',
+      });
       setModal(null);
       queryClient.invalidateQueries({ queryKey: exhibitorKeys.all });
     },
@@ -327,7 +374,6 @@ export default function AdminExhibitors() {
     rejectMutation.isPending  ||
     suspendMutation.isPending;
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
   const setParam = useCallback((key, value) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -358,27 +404,40 @@ export default function AdminExhibitors() {
       <div className="flex flex-col gap-6">
 
         {/* ── Header ──────────────────────────────────────────────── */}
-        <div className="page-header">
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="page-header"
+        >
           <div>
-            <h1 className="page-title">Exhibitors</h1>
+            <h1 className="page-title flex items-center gap-2">
+              <Sparkles size={20} className="text-secondary" />
+              Exhibitors
+            </h1>
             <p className="page-subtitle">
               {pagination.total !== undefined
-                ? `${pagination.total} exhibitor${pagination.total !== 1 ? 's' : ''}`
+                ? `${pagination.total.toLocaleString()} exhibitor${pagination.total !== 1 ? 's' : ''}`
                 : 'Manage applications and company profiles'}
             </p>
           </div>
-          <Link to="/admin/exhibitors?status=pending" className="btn-secondary gap-2">
+          <Link to="/admin/exhibitors?status=pending" className="btn-secondary gap-2 group">
             <Clock size={15} />
             Review Queue
             {statusCounts.pending > 0 && (
-              <span className="ml-0.5 flex h-5 min-w-[20px] items-center justify-center
-                               rounded-full bg-warning-container px-1.5 font-mono
-                               text-label-sm text-on-warning-container">
-                {statusCounts.pending}
-              </span>
+              <motion.span
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+                className="ml-0.5 flex h-5 min-w-[20px] items-center justify-center
+                             rounded-full bg-warning-container px-1.5 font-mono
+                             text-label-sm text-on-warning-container"
+              >
+                {statusCounts.pending > 99 ? '99+' : statusCounts.pending}
+              </motion.span>
             )}
           </Link>
-        </div>
+        </motion.div>
 
         {/* ── Status count cards ───────────────────────────────────── */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -389,28 +448,48 @@ export default function AdminExhibitors() {
                 { key: 'approved',  label: 'Approved',  color: 'bg-success-container text-on-success-container'   },
                 { key: 'rejected',  label: 'Rejected',  color: 'bg-error-container text-on-error-container'       },
                 { key: 'suspended', label: 'Suspended', color: 'bg-surface-container text-on-surface-variant'     },
-              ].map(({ key, label, color }) => {
+              ].map(({ key, label, color }, i) => {
                 const Icon = STATUS_ICON[key];
+                const count = statusCounts[key] ?? 0;
                 return (
-                  <button
+                  <motion.button
                     key={key}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05, duration: 0.3 }}
+                    whileHover={{ y: -2, transition: { duration: 0.15 } }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={() => setParam('status', status === key ? '' : key)}
                     className={cn(
-                      'card flex items-center gap-3 p-4 text-left transition-all duration-200',
+                      'card flex items-center gap-3 p-4 text-left transition-all duration-200 relative overflow-hidden',
                       'hover:shadow-level-2',
                       status === key && 'ring-2 ring-secondary'
                     )}
                   >
-                    <div className={cn('flex h-9 w-9 items-center justify-center rounded shrink-0', color)}>
+                    {/* Gradient highlight on hover */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-transparent to-secondary/[0.02] opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                    
+                    <motion.div
+                      whileHover={{ rotate: [0, -5, 5, 0] }}
+                      transition={{ duration: 0.3 }}
+                      className={cn('flex h-9 w-9 items-center justify-center rounded shrink-0 relative z-10', color)}
+                    >
                       <Icon size={17} />
-                    </div>
-                    <div>
+                      {/* Live pulse for pending */}
+                      {key === 'pending' && count > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-warning opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-warning" />
+                        </span>
+                      )}
+                    </motion.div>
+                    <div className="relative z-10">
                       <p className="font-mono text-headline-sm font-bold text-on-surface">
-                        {statusCounts[key] ?? 0}
+                        <CountUp end={count} />
                       </p>
                       <p className="text-body-sm text-on-surface-variant">{label}</p>
                     </div>
-                  </button>
+                  </motion.button>
                 );
               })}
         </div>
@@ -420,18 +499,32 @@ export default function AdminExhibitors() {
           {/* Status tabs */}
           <div className="flex flex-wrap gap-1">
             {STATUS_TABS.map((tab) => (
-              <button
+              <motion.button
                 key={tab.value}
+                whileHover={{ y: -1 }}
+                whileTap={{ y: 0 }}
                 onClick={() => setParam('status', tab.value)}
                 className={cn(
-                  'rounded px-3 py-1.5 text-body-sm font-medium transition-all duration-200',
+                  'relative rounded px-3 py-1.5 text-body-sm font-medium transition-all duration-200',
                   status === tab.value
                     ? 'bg-primary text-on-primary'
                     : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
                 )}
               >
                 {tab.label}
-              </button>
+                {tab.value && statusCounts[tab.value] > 0 && (
+                  <span className="ml-1.5 font-mono text-label-sm opacity-70">
+                    {statusCounts[tab.value]}
+                  </span>
+                )}
+                {status === tab.value && (
+                  <motion.span
+                    layoutId="exhibitor-tab-indicator"
+                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-t"
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  />
+                )}
+              </motion.button>
             ))}
           </div>
 
@@ -449,20 +542,28 @@ export default function AdminExhibitors() {
               className="input pl-9 pr-8"
             />
             {search && (
-              <button
+              <motion.button
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.5 }}
                 onClick={() => setParam('search', '')}
                 className="absolute right-3 top-1/2 -translate-y-1/2
                            text-on-surface-variant hover:text-on-surface transition-colors"
                 aria-label="Clear search"
               >
                 <X size={14} />
-              </button>
+              </motion.button>
             )}
           </div>
         </div>
 
         {/* ── Table ─────────────────────────────────────────────────── */}
-        <div className="table-wrapper">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1, duration: 0.3 }}
+          className="table-wrapper"
+        >
           <table className="data-table">
             <thead>
               <tr>
@@ -480,31 +581,53 @@ export default function AdminExhibitors() {
               ) : isError ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <AlertCircle size={20} className="text-error" />
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="flex flex-col items-center gap-2"
+                    >
+                      <motion.div
+                        animate={{ rotate: [0, 10, -10, 0] }}
+                        transition={{ duration: 0.5, delay: 0.3 }}
+                      >
+                        <AlertCircle size={20} className="text-error" />
+                      </motion.div>
                       <span className="text-body-sm text-on-surface-variant">
                         Failed to load exhibitors.
                       </span>
-                      <button onClick={() => refetch()} className="btn-ghost btn-sm gap-1">
+                      <motion.button
+                        whileHover={{ scale: 1.03 }}
+                        whileTap={{ scale: 0.97 }}
+                        onClick={() => refetch()}
+                        className="btn-ghost btn-sm gap-1"
+                      >
                         <RefreshCw size={13} /> Retry
-                      </button>
-                    </div>
+                      </motion.button>
+                    </motion.div>
                   </td>
                 </tr>
               ) : profiles.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-16">
-                    <div className="empty-state">
-                      <div className="empty-state-icon">
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="empty-state"
+                    >
+                      <motion.div
+                        animate={{ y: [0, -8, 0] }}
+                        transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+                        className="empty-state-icon"
+                      >
                         <Building2 size={24} />
-                      </div>
+                      </motion.div>
                       <h3 className="empty-state-title">No exhibitors found</h3>
                       <p className="empty-state-body">
                         {search || status
                           ? 'Try adjusting your search or filters.'
                           : 'No exhibitors have registered yet.'}
                       </p>
-                    </div>
+                    </motion.div>
                   </td>
                 </tr>
               ) : (
@@ -512,21 +635,22 @@ export default function AdminExhibitors() {
                   {profiles.map((profile, i) => (
                     <motion.tr
                       key={profile._id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15, delay: i * 0.02 }}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 10 }}
+                      transition={{ duration: 0.2, delay: i * 0.03 }}
                       className="border-b border-outline-variant hover:bg-surface-container-low
-                                 transition-colors duration-150"
+                                 transition-colors duration-150 group"
                     >
                       {/* Company */}
                       <td className="px-4 py-density-high">
                         <div className="flex items-center gap-3">
                           {profile.logo ? (
-                            <img
+                            <motion.img
+                              whileHover={{ scale: 1.1 }}
                               src={profile.logo}
                               alt={profile.companyName}
-                              className="h-8 w-8 rounded object-contain border border-outline-variant bg-surface-bright"
+                              className="h-8 w-8 rounded object-contain border border-outline-variant bg-surface-bright transition-transform"
                             />
                           ) : (
                             <div className="flex h-8 w-8 shrink-0 items-center justify-center
@@ -551,9 +675,20 @@ export default function AdminExhibitors() {
 
                       {/* Status */}
                       <td className="px-4 py-density-high">
-                        <span className={cn('badge', STATUS_BADGE[profile.applicationStatus])}>
+                        <motion.span
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ delay: i * 0.03 + 0.1, type: 'spring', stiffness: 300 }}
+                          className={cn('badge', STATUS_BADGE[profile.applicationStatus])}
+                        >
+                          {profile.applicationStatus === 'pending' && (
+                            <span className="relative flex h-1.5 w-1.5 mr-1">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-warning opacity-75" />
+                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-warning" />
+                            </span>
+                          )}
                           {profile.applicationStatus}
-                        </span>
+                        </motion.span>
                       </td>
 
                       {/* Industry */}
@@ -573,10 +708,15 @@ export default function AdminExhibitors() {
                       {/* Verified */}
                       <td className="px-4 py-density-high">
                         {profile.isVerified ? (
-                          <div className="flex items-center gap-1 text-secondary">
+                          <motion.div
+                            initial={{ opacity: 0, x: -5 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.03 + 0.15 }}
+                            className="flex items-center gap-1 text-secondary"
+                          >
                             <ShieldCheck size={15} />
                             <span className="font-mono text-label-sm">Verified</span>
-                          </div>
+                          </motion.div>
                         ) : (
                           <span className="font-mono text-label-sm text-on-surface-variant">—</span>
                         )}
@@ -584,10 +724,12 @@ export default function AdminExhibitors() {
 
                       {/* Actions */}
                       <td className="px-4 py-density-high">
-                        <RowActions
-                          exhibitor={profile}
-                          onAction={(action, exhibitor) => setModal({ action, exhibitor })}
-                        />
+                        <div className="sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200">
+                          <RowActions
+                            exhibitor={profile}
+                            onAction={(action, exhibitor) => setModal({ action, exhibitor })}
+                          />
+                        </div>
                       </td>
                     </motion.tr>
                   ))}
@@ -595,31 +737,40 @@ export default function AdminExhibitors() {
               )}
             </tbody>
           </table>
-        </div>
+        </motion.div>
 
         {/* ── Pagination ───────────────────────────────────────────── */}
         {!isLoading && pagination.totalPages > 1 && (
-          <div className="flex items-center justify-between">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="flex items-center justify-between"
+          >
             <p className="font-mono text-label-sm text-on-surface-variant">
-              Page {pagination.page} of {pagination.totalPages} · {pagination.total} total
+              Page {pagination.page} of {pagination.totalPages} · {pagination.total.toLocaleString()} total
             </p>
             <div className="flex items-center gap-2">
-              <button
+              <motion.button
+                whileHover={{ x: -2 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => setParam('page', String(page - 1))}
                 disabled={!pagination.hasPrevPage}
                 className="btn-ghost btn-sm gap-1 disabled:opacity-40"
               >
                 <ChevronLeft size={15} /> Prev
-              </button>
-              <button
+              </motion.button>
+              <motion.button
+                whileHover={{ x: 2 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => setParam('page', String(page + 1))}
                 disabled={!pagination.hasNextPage}
                 className="btn-ghost btn-sm gap-1 disabled:opacity-40"
               >
                 Next <ChevronRight size={15} />
-              </button>
+              </motion.button>
             </div>
-          </div>
+          </motion.div>
         )}
       </div>
 

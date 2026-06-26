@@ -24,7 +24,7 @@ const {
   authorizeRoles,
 } = require('../middleware/Auth.middleware');
 
-const { APPLICATION_STATUSES, DOCUMENT_STATUSES, DOCUMENT_TYPES } = require('../models/ExhibitorProfile');
+const { APPLICATION_STATUSES, DOCUMENT_STATUSES, DOCUMENT_TYPES } = require('../models/Exhibitorprofile');
 
 const router = express.Router();
 

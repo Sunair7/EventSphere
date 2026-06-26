@@ -2,6 +2,7 @@
 
 const { validationResult } = require('express-validator');
 const User = require('../models/User');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
 const {
   signAccessToken,
   signRefreshToken,
@@ -55,9 +56,26 @@ const register = async (req, res, next) => {
       return next(createError(403, 'Admin accounts cannot be self-registered.'));
     }
 
+    // const existingUser = await User.findOne({ email }).lean();
+    // if (existingUser) {
+    //   return next(createError(409, 'An account with this email address already exists.'));
+    // }
     const existingUser = await User.findOne({ email }).lean();
     if (existingUser) {
-      return next(createError(409, 'An account with this email address already exists.'));
+      // Don't reveal if account exists - just say check your email
+      // If the account exists and is unverified, resend verification
+      if (!existingUser.isEmailVerified) {
+        // Silently return success to prevent enumeration
+        return res.status(201).json({
+          success: true,
+          message: 'Registration successful. If this email is already registered, a new verification link has been sent.',
+        });
+      }
+      // If account exists and IS verified, still don't reveal it
+      return res.status(201).json({
+        success: true,
+        message: 'Registration successful. If this email is already registered, please sign in.',
+      });
     }
 
     const user = await User.create({ name, email, password, role });
@@ -65,6 +83,18 @@ const register = async (req, res, next) => {
     // Generate email verification token
     const verificationToken = user.createEmailVerificationToken();
     await user.save({ validateBeforeSave: false });
+
+     // Send verification email
+  try {
+    await sendVerificationEmail({
+      to: user.email,
+      name: user.name,
+      token: verificationToken,
+    });
+  } catch (emailErr) {
+    console.error('Failed to send verification email:', emailErr.message);
+  }
+
 
     // In production, dispatch via a dedicated mail service.
     // The raw token is intentionally returned in development only.
@@ -242,8 +272,16 @@ const forgotPassword = async (req, res, next) => {
     const rawToken = user.createPasswordResetToken();
     await user.save({ validateBeforeSave: false });
 
-    // TODO (Phase 5): Dispatch reset email via mail service
-    // mailService.sendPasswordReset({ to: user.email, token: rawToken });
+// Send password reset email
+  try {
+    await sendPasswordResetEmail({
+      to: user.email,
+      name: user.name,
+      token: rawToken,
+    });
+  } catch (emailErr) {
+    console.error('Failed to send password reset email:', emailErr.message);
+  }
 
     const isDev = process.env.NODE_ENV !== 'production';
 
@@ -338,13 +376,23 @@ const resendVerification = async (req, res, next) => {
     const rawToken = user.createEmailVerificationToken();
     await user.save({ validateBeforeSave: false });
 
-    // TODO (Phase 5): mailService.sendVerificationEmail({ to: user.email, token: rawToken });
+    // Send the actual email
+    try {
+      await sendVerificationEmail({
+        to: user.email,
+        name: user.name,
+        token: rawToken,
+      });
+    } catch (emailErr) {
+      console.error('Failed to send verification email:', emailErr.message);
+      // Don't fail the request - token is still generated
+    }
 
     const isDev = process.env.NODE_ENV !== 'production';
 
     return res.status(200).json({
       success: true,
-      message: 'Verification email resent. Please check your inbox.',
+      message: 'Verification email sent. Please check your inbox.',
       ...(isDev && { _devVerificationToken: rawToken }),
     });
   } catch (err) {

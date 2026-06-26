@@ -4,6 +4,8 @@ const mongoose             = require('mongoose');
 const { validationResult } = require('express-validator');
 const Session              = require('../models/Session');
 const Expo                 = require('../models/Expo');
+const User                 = require('../models/User');
+const ExhibitorProfile     = require('../models/Exhibitorprofile');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const createError = (statusCode, message) => {
@@ -158,31 +160,39 @@ const getSessionsByExpo = async (req, res, next) => {
 
     const [sessions, total] = await Promise.all([
       Session.find(filter)
-        .select('-attendees -bookmarkedBy')
+        .select('+attendees -bookmarkedBy')
         .sort({ startTime: 1, location: 1 })
         .skip(skip)
         .limit(limit)
-        .lean(),
+        .lean({ virtuals: true }),
       Session.countDocuments(filter),
     ]);
 
-    // Attach registration status for the requesting user
-    let enrichedSessions = sessions;
-    if (req.user) {
-      const userId = req.user._id.toString();
-      const [registrations, bookmarks] = await Promise.all([
-        Session.find({ expoId, 'attendees.userId': req.user._id }).select('_id').lean(),
-        Session.find({ expoId, bookmarkedBy: req.user._id }).select('_id').lean(),
-      ]);
-      const registeredIds = new Set(registrations.map((s) => s._id.toString()));
-      const bookmarkedIds = new Set(bookmarks.map((s) => s._id.toString()));
+    // 🔑 Manually add attendeeCount since virtuals don't work with lean()
+const sessionsWithCount = sessions.map((s) => ({
+  ...s,
+  attendeeCount: s.attendees?.length ?? 0,
+  // Remove the heavy attendees array from the response
+  attendees: undefined,
+}));
 
-      enrichedSessions = sessions.map((s) => ({
-        ...s,
-        isRegistered:  registeredIds.has(s._id.toString()),
-        isBookmarked:  bookmarkedIds.has(s._id.toString()),
-      }));
-    }
+    // Attach registration status for the requesting user
+let enrichedSessions = sessionsWithCount; // ← Changed from sessions
+if (req.user) {
+  const userId = req.user._id.toString();
+  const [registrations, bookmarks] = await Promise.all([
+    Session.find({ expoId, 'attendees.userId': req.user._id }).select('_id').lean(),
+    Session.find({ expoId, bookmarkedBy: req.user._id }).select('_id').lean(),
+  ]);
+  const registeredIds = new Set(registrations.map((s) => s._id.toString()));
+  const bookmarkedIds = new Set(bookmarks.map((s) => s._id.toString()));
+
+  enrichedSessions = sessionsWithCount.map((s) => ({
+    ...s,
+    isRegistered: registeredIds.has(s._id.toString()),
+    isBookmarked: bookmarkedIds.has(s._id.toString()),
+  }));
+}
 
     res.setHeader('X-Total-Count', total);
 
@@ -654,6 +664,44 @@ const getSessionAttendees = async (req, res, next) => {
   }
 };
 
+// ─── @route   GET /api/v1/sessions/me/speaking ───────────────────────────────
+// @access  Authenticated
+// Returns sessions where the current user is listed as a speaker
+const getMySpeakingSessions = async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+    const user = await User.findById(userId).select('name email').lean();
+    const profile = await ExhibitorProfile.findOne({ userId })
+      .select('companyName contactPerson')
+      .lean();
+
+    const orConditions = [{ 'speakers.userId': userId }];
+
+    if (user?.name) {
+      const escaped = user.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      orConditions.push({ 'speakers.name': { $regex: new RegExp(`^${escaped}$`, 'i') } });
+    }
+
+    if (profile?.companyName) {
+      const escaped = profile.companyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      orConditions.push({ 'speakers.company': { $regex: new RegExp(`^${escaped}$`, 'i') } });
+    }
+
+    const sessions = await Session.find({ $or: orConditions })
+      .select('-attendees -bookmarkedBy')
+      .populate('expoId', 'title status')
+      .sort({ startTime: 1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      data: { sessions, total: sessions.length },
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 module.exports = {
   createSession,
   getSessionsByExpo,
@@ -669,4 +717,5 @@ module.exports = {
   getMyBookmarks,
   getExpoSchedule,
   getSessionAttendees,
+  getMySpeakingSessions,
 };

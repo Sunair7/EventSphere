@@ -136,7 +136,6 @@ const UserSchema = new mongoose.Schema(
 );
 
 // ─── Indexes ──────────────────────────────────────────────────────────────────
-UserSchema.index({ email: 1 });
 UserSchema.index({ role: 1 });
 UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
 UserSchema.index({ emailVerificationToken: 1 }, { sparse: true });
@@ -269,7 +268,7 @@ UserSchema.statics.findByVerificationToken = function (rawToken) {
 
 // Safe public projection — excludes all sensitive fields for list/profile endpoints
 UserSchema.statics.publicFields = function () {
-  return 'name email role avatar profileIsComplete isEmailVerified lastLoginAt createdAt';
+  return 'name email role avatar profileIsComplete isEmailVerified isActive lastLoginAt createdAt';
 };
 
 // ─── Model Export ─────────────────────────────────────────────────────────────

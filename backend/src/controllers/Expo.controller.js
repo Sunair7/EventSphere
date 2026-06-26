@@ -5,6 +5,11 @@ const { validationResult } = require('express-validator');
 const Expo               = require('../models/Expo');
 const Booth              = require('../models/Booth');
 const Session            = require('../models/Session');
+const Notification       = require('../models/Notification');
+const { BOOTH_SIZES, BOOTH_TYPES } = require('../models/Booth'); 
+
+// NOTE: Ensure these utilities are correctly imported based on your project structure
+const { deleteCloudinaryImage, extractPublicId } = require('../middleware/Upload.middleware');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const createError = (statusCode, message) => {
@@ -99,6 +104,30 @@ const createExpo = async (req, res, next) => {
         createdBy: req.user.name,
       });
     }
+
+    
+if (expo.status === 'published') {
+  // Notify exhibitors
+  await Notification.notifyRole(req.app.get('io'), 'exhibitor', {
+    type: 'expo_published',
+    title: `New Expo: ${expo.title}`,
+    body: `A new expo "${expo.title}" is now accepting applications.`,
+    link: `/exhibitor/expos/${expo._id}`,
+    referenceId: expo._id,
+    referenceModel: 'Expo',
+  });
+  
+  // Notify attendees
+  await Notification.notifyRole(req.app.get('io'), 'attendee', {
+    type: 'expo_published',
+    title: `New Expo: ${expo.title}`,
+    body: `"${expo.title}" has been announced. Browse sessions and register!`,
+    link: `/attendee/expos/${expo._id}`,
+    referenceId: expo._id,
+    referenceModel: 'Expo',
+  });
+}
+
 
     return res.status(201).json({
       success: true,
@@ -329,6 +358,29 @@ const updateExpoStatus = async (req, res, next) => {
       });
     }
 
+    if (status === 'published') {
+  await expo.publish();
+  
+  // Notify exhibitors and attendees
+  await Notification.notifyRole(req.app.get('io'), 'exhibitor', {
+    type: 'expo_published',
+    title: `New Expo: ${expo.title}`,
+    body: `A new expo "${expo.title}" is now accepting applications.`,
+    link: `/exhibitor/expos/${expo._id}`,
+    referenceId: expo._id,
+    referenceModel: 'Expo',
+  });
+  
+  await Notification.notifyRole(req.app.get('io'), 'attendee', {
+    type: 'expo_published',
+    title: `New Expo: ${expo.title}`,
+    body: `"${expo.title}" has been announced. Browse sessions and register!`,
+    link: `/attendee/expos/${expo._id}`,
+    referenceId: expo._id,
+    referenceModel: 'Expo',
+  });
+}
+
     return res.status(200).json({
       success: true,
       message: `Expo status updated to "${expo.status}".`,
@@ -504,6 +556,189 @@ const getUpcomingExpos = async (req, res, next) => {
   }
 };
 
+// ─── @route   POST /api/v1/expos/:id/banner ──────────────────────────────────
+// @access  Admin
+const uploadBanner = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(createError(400, 'Invalid expo ID format.'));
+    }
+
+    if (!req.file) {
+      return next(createError(422, 'No banner image provided.'));
+    }
+
+    const expo = await Expo.findById(id);
+    if (!expo) {
+      // Clean up uploaded file if expo doesn't exist
+      await deleteCloudinaryImage(req.file.public_id);
+      return next(createError(404, 'Expo not found.'));
+    }
+
+    // Delete old banner from Cloudinary if exists
+    if (expo.banner?.publicId) {
+      await deleteCloudinaryImage(expo.banner.publicId);
+    }
+
+    // Update banner
+    expo.banner = {
+      url:       req.file.path,
+      publicId:  req.file.filename || req.file.public_id,
+      altText:   req.body.altText || expo.title,
+    };
+
+    await expo.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Banner uploaded successfully.',
+      data:    { banner: expo.banner },
+    });
+  } catch (err) {
+    // Clean up on error
+    if (req.file?.public_id) {
+      await deleteCloudinaryImage(req.file.public_id);
+    }
+    return next(err);
+  }
+};
+
+// ─── @route   POST /api/v1/expos/:id/gallery ─────────────────────────────────
+// @access  Admin
+const uploadGallery = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(createError(400, 'Invalid expo ID format.'));
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return next(createError(422, 'No gallery images provided.'));
+    }
+
+    const expo = await Expo.findById(id);
+    if (!expo) {
+      // Clean up uploaded files
+      await Promise.all(req.files.map((f) => deleteCloudinaryImage(f.public_id)));
+      return next(createError(404, 'Expo not found.'));
+    }
+
+    // Check gallery limit
+    const currentCount = expo.gallery?.length || 0;
+    const newCount     = currentCount + req.files.length;
+    if (newCount > 20) {
+      await Promise.all(req.files.map((f) => deleteCloudinaryImage(f.public_id)));
+      return next(createError(422, `Gallery limit reached. Maximum 20 images (currently ${currentCount}).`));
+    }
+
+    // Add new images to gallery
+    const newImages = req.files.map((file) => ({
+      url:      file.path,
+      publicId: file.filename || file.public_id,
+      altText:  `${expo.title} - Image ${currentCount + 1}`,
+    }));
+
+    expo.gallery = [...(expo.gallery || []), ...newImages];
+    await expo.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `${req.files.length} image(s) added to gallery.`,
+      data:    { gallery: expo.gallery },
+    });
+  } catch (err) {
+    if (req.files?.length) {
+      await Promise.all(req.files.map((f) => deleteCloudinaryImage(f.public_id)));
+    }
+    return next(err);
+  }
+};
+
+// ─── @route   DELETE /api/v1/expos/:id/gallery/:imageId ──────────────────────
+// @access  Admin
+const deleteGalleryImage = async (req, res, next) => {
+  try {
+    const { id, imageId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(createError(400, 'Invalid expo ID format.'));
+    }
+
+    const expo = await Expo.findById(id);
+    if (!expo) {
+      return next(createError(404, 'Expo not found.'));
+    }
+
+    const imageIndex = expo.gallery?.findIndex(
+      (img) => img._id.toString() === imageId
+    );
+
+    if (imageIndex === -1 || imageIndex === undefined) {
+      return next(createError(404, 'Gallery image not found.'));
+    }
+
+    // Delete from Cloudinary
+    const image = expo.gallery[imageIndex];
+    if (image.publicId) {
+      await deleteCloudinaryImage(image.publicId);
+    }
+
+    // Remove from array
+    expo.gallery.splice(imageIndex, 1);
+    await expo.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Gallery image deleted.',
+      data:    { gallery: expo.gallery },
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+// ─── @route   DELETE /api/v1/expos/:id/banner ────────────────────────────────
+// @access  Admin
+const deleteBanner = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(createError(400, 'Invalid expo ID format.'));
+    }
+
+    const expo = await Expo.findById(id);
+    if (!expo) {
+      return next(createError(404, 'Expo not found.'));
+    }
+
+    if (!expo.banner?.publicId && !expo.banner?.url) {
+      return next(createError(404, 'No banner to delete.'));
+    }
+
+    // Delete from Cloudinary
+    const publicId = expo.banner.publicId || extractPublicId(expo.banner.url);
+    if (publicId) {
+      await deleteCloudinaryImage(publicId);
+    }
+
+    // Clear banner
+    expo.banner = {};
+    await expo.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Banner deleted.',
+      data:    { banner: expo.banner },
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 module.exports = {
   createExpo,
   getExpos,
@@ -515,4 +750,8 @@ module.exports = {
   deleteExpo,
   getExpoStats,
   getUpcomingExpos,
+  uploadBanner,
+  uploadGallery,
+  deleteGalleryImage,
+  deleteBanner,
 };

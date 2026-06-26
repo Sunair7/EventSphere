@@ -6,7 +6,8 @@ import {
   Plus, Search, Calendar, MapPin, LayoutGrid,
   BookOpen, MoreVertical, Edit2, Trash2,
   Eye, Send, X, AlertCircle, RefreshCw,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Image, Sparkles,
+  Clock, Globe, Lock,
 } from 'lucide-react';
 import { format }                         from 'date-fns';
 import toast                              from 'react-hot-toast';
@@ -43,7 +44,7 @@ function TableRowSkeleton() {
     <tr className="border-b border-outline-variant">
       {[40, 24, 32, 24, 20, 16].map((w, i) => (
         <td key={i} className="px-4 py-density-high">
-          <div className={`skeleton h-4 rounded`} style={{ width: `${w * 3}px` }} />
+          <div className="skeleton h-4 rounded" style={{ width: `${w * 3}px` }} />
         </td>
       ))}
     </tr>
@@ -61,9 +62,14 @@ function DeleteModal({ expo, onConfirm, onCancel, isDeleting }) {
         transition={{ duration: 0.18 }}
         className="modal-panel max-w-md p-6"
       >
-        <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-error-container">
+        <motion.div
+          initial={{ rotate: -10, scale: 0 }}
+          animate={{ rotate: 0, scale: 1 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 20, delay: 0.1 }}
+          className="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-error-container"
+        >
           <Trash2 size={18} className="text-on-error-container" />
-        </div>
+        </motion.div>
         <h2 id="delete-title" className="mb-1 text-headline-sm font-semibold text-on-surface">
           Delete expo?
         </h2>
@@ -75,7 +81,13 @@ function DeleteModal({ expo, onConfirm, onCancel, isDeleting }) {
           <button onClick={onCancel} disabled={isDeleting} className="btn-ghost">
             Cancel
           </button>
-          <button onClick={onConfirm} disabled={isDeleting} className="btn-danger">
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="btn-danger flex items-center gap-2"
+          >
             {isDeleting ? (
               <>
                 <motion.span
@@ -90,7 +102,7 @@ function DeleteModal({ expo, onConfirm, onCancel, isDeleting }) {
                 <Trash2 size={14} /> Delete expo
               </>
             )}
-          </button>
+          </motion.button>
         </div>
       </motion.div>
     </div>
@@ -105,7 +117,7 @@ function RowActions({ expo, onDelete }) {
   const publishMutation = useMutation({
     mutationFn: async () => api.patch(`/expos/${expo._id}/status`, { status: 'published' }),
     onSuccess:  () => {
-      toast.success(`"${expo.title}" published successfully.`);
+      toast.success(`"${expo.title}" published successfully.`, { icon: '✅' });
       queryClient.invalidateQueries({ queryKey: expoKeys.all });
     },
     onError: (err) => toast.error(err.message || 'Failed to publish expo.'),
@@ -113,7 +125,9 @@ function RowActions({ expo, onDelete }) {
 
   return (
     <div className="relative">
-      <button
+      <motion.button
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
         onClick={() => setOpen((v) => !v)}
         className="rounded p-1.5 text-on-surface-variant hover:bg-surface-container
                    hover:text-on-surface transition-colors duration-200"
@@ -122,7 +136,7 @@ function RowActions({ expo, onDelete }) {
         aria-expanded={open}
       >
         <MoreVertical size={16} />
-      </button>
+      </motion.button>
 
       <AnimatePresence>
         {open && (
@@ -134,7 +148,7 @@ function RowActions({ expo, onDelete }) {
               exit={{ opacity: 0, scale: 0.95, y: -4   }}
               transition={{ duration: 0.12 }}
               className="absolute right-0 top-8 z-50 min-w-[160px] rounded-md border
-                         border-outline-variant bg-surface-bright shadow-level-2"
+                         border-outline-variant bg-surface-bright shadow-level-2 overflow-hidden"
             >
               <Link
                 to={`/admin/expos/${expo._id}`}
@@ -171,7 +185,12 @@ function RowActions({ expo, onDelete }) {
                              text-secondary hover:bg-secondary-container/30 transition-colors"
                 >
                   <Send size={14} />
-                  {publishMutation.isPending ? 'Publishing…' : 'Publish'}
+                  {publishMutation.isPending ? (
+                    <span className="flex items-center gap-1">
+                      <RefreshCw size={12} className="animate-spin-slow" />
+                      Publishing…
+                    </span>
+                  ) : 'Publish'}
                 </button>
               )}
 
@@ -188,6 +207,40 @@ function RowActions({ expo, onDelete }) {
           </>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+// ─── Expo Banner Thumbnail ────────────────────────────────────────────────────
+function ExpoBanner({ banner, title, status }) {
+  if (banner?.url) {
+    return (
+      <div className="relative h-10 w-16 shrink-0 rounded-md overflow-hidden border border-outline-variant bg-surface-container-low">
+        <img
+          src={banner.url}
+          alt={banner.altText || title}
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+        {status === 'ongoing' && (
+          <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+            <motion.span
+              animate={{ opacity: [1, 0.3, 1] }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+              className="h-1.5 w-1.5 rounded-full bg-success"
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn(
+      'flex h-10 w-16 shrink-0 items-center justify-center rounded-md border border-outline-variant',
+      'bg-surface-container-low text-on-surface-variant/40'
+    )}>
+      <Image size={16} />
     </div>
   );
 }
@@ -225,7 +278,7 @@ export default function AdminExpos() {
   const deleteMutation = useMutation({
     mutationFn: (id) => api.delete(`/expos/${id}`),
     onSuccess: () => {
-      toast.success('Expo deleted successfully.');
+      toast.success('Expo deleted successfully.', { icon: '🗑️' });
       setDeleteTarget(null);
       queryClient.invalidateQueries({ queryKey: expoKeys.all });
     },
@@ -251,19 +304,27 @@ export default function AdminExpos() {
       <div className="flex flex-col gap-6">
 
         {/* ── Page header ───────────────────────────────────────────── */}
-        <div className="page-header">
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="page-header"
+        >
           <div>
-            <h1 className="page-title">Expos</h1>
+            <h1 className="page-title flex items-center gap-2">
+              <Sparkles size={20} className="text-secondary" />
+              Expos
+            </h1>
             <p className="page-subtitle">
               {pagination.total !== undefined
-                ? `${pagination.total} expo${pagination.total !== 1 ? 's' : ''} total`
+                ? `${pagination.total.toLocaleString()} expo${pagination.total !== 1 ? 's' : ''} total`
                 : 'Manage your events'}
             </p>
           </div>
-          <Link to="/admin/expos/create" className="btn-secondary gap-2">
+          <Link to="/admin/expos/create" className="btn-secondary gap-2 group">
             <Plus size={16} /> New Expo
           </Link>
-        </div>
+        </motion.div>
 
         {/* ── Filters ───────────────────────────────────────────────── */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -271,18 +332,27 @@ export default function AdminExpos() {
           {/* Status tabs */}
           <div className="flex flex-wrap gap-1">
             {STATUS_TABS.map((tab) => (
-              <button
+              <motion.button
                 key={tab.value}
+                whileHover={{ y: -1 }}
+                whileTap={{ y: 0 }}
                 onClick={() => setParam('status', tab.value)}
                 className={cn(
-                  'rounded px-3 py-1.5 text-body-sm font-medium transition-all duration-200',
+                  'relative rounded px-3 py-1.5 text-body-sm font-medium transition-all duration-200',
                   status === tab.value
                     ? 'bg-primary text-on-primary'
                     : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
                 )}
               >
                 {tab.label}
-              </button>
+                {status === tab.value && (
+                  <motion.span
+                    layoutId="expo-tab-indicator"
+                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-t"
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  />
+                )}
+              </motion.button>
             ))}
           </div>
 
@@ -300,20 +370,27 @@ export default function AdminExpos() {
               className="input pl-9 pr-8"
             />
             {search && (
-              <button
+              <motion.button
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{ opacity: 1, scale: 1 }}
                 onClick={() => setParam('search', '')}
                 className="absolute right-3 top-1/2 -translate-y-1/2
                            text-on-surface-variant hover:text-on-surface transition-colors"
                 aria-label="Clear search"
               >
                 <X size={14} />
-              </button>
+              </motion.button>
             )}
           </div>
         </div>
 
         {/* ── Table ─────────────────────────────────────────────────── */}
-        <div className="table-wrapper">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1, duration: 0.3 }}
+          className="table-wrapper"
+        >
           <table className="data-table">
             <thead>
               <tr>
@@ -332,22 +409,44 @@ export default function AdminExpos() {
               ) : isError ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center">
-                    <div className="flex flex-col items-center gap-2 text-on-surface-variant">
-                      <AlertCircle size={20} className="text-error" />
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="flex flex-col items-center gap-2 text-on-surface-variant"
+                    >
+                      <motion.div
+                        animate={{ rotate: [0, 10, -10, 0] }}
+                        transition={{ duration: 0.5, delay: 0.3 }}
+                      >
+                        <AlertCircle size={20} className="text-error" />
+                      </motion.div>
                       <span className="text-body-sm">Failed to load expos.</span>
-                      <button onClick={() => refetch()} className="btn-ghost btn-sm gap-1">
+                      <motion.button
+                        whileHover={{ scale: 1.03 }}
+                        whileTap={{ scale: 0.97 }}
+                        onClick={() => refetch()}
+                        className="btn-ghost btn-sm gap-1"
+                      >
                         <RefreshCw size={13} /> Retry
-                      </button>
-                    </div>
+                      </motion.button>
+                    </motion.div>
                   </td>
                 </tr>
               ) : expos.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-16 text-center">
-                    <div className="empty-state">
-                      <div className="empty-state-icon">
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="empty-state"
+                    >
+                      <motion.div
+                        animate={{ y: [0, -8, 0] }}
+                        transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+                        className="empty-state-icon"
+                      >
                         <Calendar size={24} />
-                      </div>
+                      </motion.div>
                       <h3 className="empty-state-title">No expos found</h3>
                       <p className="empty-state-body mb-4">
                         {search || status
@@ -359,7 +458,7 @@ export default function AdminExpos() {
                           <Plus size={14} /> Create expo
                         </Link>
                       )}
-                    </div>
+                    </motion.div>
                   </td>
                 </tr>
               ) : (
@@ -367,36 +466,59 @@ export default function AdminExpos() {
                   {expos.map((expo, i) => (
                     <motion.tr
                       key={expo._id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15, delay: i * 0.03 }}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 10 }}
+                      transition={{ duration: 0.2, delay: i * 0.03 }}
                       className="border-b border-outline-variant hover:bg-surface-container-low
-                                 transition-colors duration-150"
+                                 transition-colors duration-150 group"
                     >
-                      {/* Title */}
+                      {/* Title with thumbnail */}
                       <td className="px-4 py-density-high">
-                        <div className="flex flex-col gap-0.5">
-                          <Link
-                            to={`/admin/expos/${expo._id}`}
-                            className="font-medium text-on-surface hover:text-secondary
-                                       transition-colors duration-200 line-clamp-1"
-                          >
-                            {expo.title}
-                          </Link>
-                          {expo.theme && (
-                            <span className="font-mono text-label-sm text-on-surface-variant line-clamp-1">
-                              {expo.theme}
-                            </span>
-                          )}
+                        <div className="flex items-center gap-3">
+                          <ExpoBanner
+                            banner={expo.banner}
+                            title={expo.title}
+                            status={expo.status}
+                          />
+                          <div className="flex flex-col gap-0.5 min-w-0">
+                            <Link
+                              to={`/admin/expos/${expo._id}`}
+                              className="font-medium text-on-surface hover:text-secondary
+                                         transition-colors duration-200 line-clamp-1"
+                            >
+                              {expo.title}
+                            </Link>
+                            <div className="flex items-center gap-1.5">
+                              {expo.theme && (
+                                <span className="font-mono text-label-sm text-on-surface-variant line-clamp-1">
+                                  {expo.theme}
+                                </span>
+                              )}
+                              {expo.isPublic === false && (
+                                <Lock size={10} className="text-on-surface-variant/50 shrink-0" />
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </td>
 
                       {/* Status */}
                       <td className="px-4 py-density-high">
-                        <span className={cn('badge', STATUS_BADGE[expo.status] || 'badge-neutral')}>
+                        <motion.span
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ delay: i * 0.03 + 0.1, type: 'spring', stiffness: 300 }}
+                          className={cn('badge', STATUS_BADGE[expo.status] || 'badge-neutral')}
+                        >
+                          {expo.status === 'ongoing' && (
+                            <span className="relative flex h-1.5 w-1.5 mr-1">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-success" />
+                            </span>
+                          )}
                           {expo.status}
-                        </span>
+                        </motion.span>
                       </td>
 
                       {/* Date */}
@@ -421,21 +543,23 @@ export default function AdminExpos() {
 
                       {/* Booths */}
                       <td className="px-4 py-density-high text-center">
-                        <span className="font-mono text-label-md text-on-surface">
+                        <span className="font-mono text-label-md text-on-surface tabular-nums">
                           {expo.boothCount ?? 0}
                         </span>
                       </td>
 
                       {/* Sessions */}
                       <td className="px-4 py-density-high text-center">
-                        <span className="font-mono text-label-md text-on-surface">
+                        <span className="font-mono text-label-md text-on-surface tabular-nums">
                           {expo.sessionCount ?? 0}
                         </span>
                       </td>
 
                       {/* Actions */}
                       <td className="px-4 py-density-high">
-                        <RowActions expo={expo} onDelete={setDeleteTarget} />
+                        <div className="sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200 ">
+                          <RowActions expo={expo} onDelete={setDeleteTarget} />
+                        </div>
                       </td>
                     </motion.tr>
                   ))}
@@ -443,34 +567,43 @@ export default function AdminExpos() {
               )}
             </tbody>
           </table>
-        </div>
+        </motion.div>
 
         {/* ── Pagination ────────────────────────────────────────────── */}
         {!isLoading && pagination.totalPages > 1 && (
-          <div className="flex items-center justify-between">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="flex items-center justify-between"
+          >
             <p className="font-mono text-label-sm text-on-surface-variant">
               Page {pagination.page} of {pagination.totalPages} ·{' '}
-              {pagination.total} total
+              {pagination.total.toLocaleString()} total
             </p>
             <div className="flex items-center gap-2">
-              <button
+              <motion.button
+                whileHover={{ x: -2 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => setParam('page', String(page - 1))}
                 disabled={!pagination.hasPrevPage}
                 className="btn-ghost btn-sm gap-1 disabled:opacity-40"
                 aria-label="Previous page"
               >
                 <ChevronLeft size={15} /> Prev
-              </button>
-              <button
+              </motion.button>
+              <motion.button
+                whileHover={{ x: 2 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => setParam('page', String(page + 1))}
                 disabled={!pagination.hasNextPage}
                 className="btn-ghost btn-sm gap-1 disabled:opacity-40"
                 aria-label="Next page"
               >
                 Next <ChevronRight size={15} />
-              </button>
+              </motion.button>
             </div>
-          </div>
+          </motion.div>
         )}
       </div>
 

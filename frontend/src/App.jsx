@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { AnimatePresence } from 'framer-motion';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 
 import { AuthProvider }            from '@/context/AuthContext';
 import { SocketProvider }          from '@/context/SocketContext';
@@ -20,7 +20,7 @@ const ForgotPasswordPage   = lazy(() => import('@/pages/auth/ForgotPasswordPage'
 const ResetPasswordPage    = lazy(() => import('@/pages/auth/ResetPasswordPage'));
 const VerifyEmailPage      = lazy(() => import('@/pages/auth/VerifyEmailPage'));
 
-// ── Admin Pages ───────────────────────────────────────────────────────────────
+// ─── Admin Pages ───────────────────────────────────────────────────────────────
 const AdminDashboard       = lazy(() => import('@/pages/admin/AdminDashboard'));
 const AdminExpos           = lazy(() => import('@/pages/admin/expos/AdminExpos'));
 const AdminExpoDetail      = lazy(() => import('@/pages/admin/expos/AdminExpoDetail'));
@@ -58,6 +58,47 @@ const AttendeeSchedule     = lazy(() => import('@/pages/attendee/schedule/Attend
 const AccountSettings      = lazy(() => import('@/pages/shared/AccountSettings'));
 const NotFoundPage         = lazy(() => import('@/pages/shared/NotFoundPage'));
 const UnauthorisedPage     = lazy(() => import('@/pages/shared/UnauthorisedPage'));
+const TransactionHistory   = lazy(() => import('@/pages/shared/TransactionHistory')); // ✅ CHANGE: Use the new file
+const TransactionDetail    = lazy(() => import('@/pages/shared/TransactionDetail'));
+
+// ─── Page transition variants ─────────────────────────────────────────────────
+const pageVariants = {
+  initial: { 
+    opacity: 0, 
+    y: 12,
+  },
+  animate: { 
+    opacity: 1, 
+    y: 0,
+    transition: {
+      duration: 0.25,
+      ease: [0.25, 0.46, 0.45, 0.94],
+    }
+  },
+  exit: { 
+    opacity: 0, 
+    y: -8,
+    transition: {
+      duration: 0.15,
+      ease: [0.55, 0.085, 0.68, 0.53],
+    }
+  },
+};
+
+// ─── Animated page wrapper ────────────────────────────────────────────────────
+function AnimatedPage({ children }) {
+  return (
+    <motion.div
+      variants={pageVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      className="w-full"
+    >
+      {children}
+    </motion.div>
+  );
+}
 
 // ─── Route-level Suspense wrapper ─────────────────────────────────────────────
 const Lazy = ({ children }) => (
@@ -71,101 +112,121 @@ export const ROLE_HOME = {
   attendee:  '/attendee/dashboard',
 };
 
+// ─── Animated Routes Component ────────────────────────────────────────────────
+function AnimatedRoutes() {
+  const location = useLocation();
+
+  return (
+    <AnimatePresence mode="wait">
+      <Routes location={location} key={location.pathname}>
+        {/* ── Public Layout Routes ─────────────────────────────────── */}
+        <Route element={<PublicLayout />}>
+          <Route
+            path="/"
+            element={
+              <Lazy>
+                <AnimatedPage>
+                  <LandingPage />
+                </AnimatedPage>
+              </Lazy>
+            }
+          />
+        </Route>
+
+        {/* ── Auth Routes (redirect if already logged in) ──────────── */}
+        <Route element={<PublicRoute />}>
+          <Route path="/login"    element={<Lazy><AnimatedPage><LoginPage /></AnimatedPage></Lazy>} />
+          <Route path="/register" element={<Lazy><AnimatedPage><RegisterPage /></AnimatedPage></Lazy>} />
+          <Route path="/forgot-password"         element={<Lazy><AnimatedPage><ForgotPasswordPage /></AnimatedPage></Lazy>} />
+          <Route path="/reset-password/:token"   element={<Lazy><AnimatedPage><ResetPasswordPage /></AnimatedPage></Lazy>} />
+        </Route>
+
+        <Route path="/verify-email/:token"     element={<Lazy><AnimatedPage><VerifyEmailPage /></AnimatedPage></Lazy>} />
+
+        {/* ── Admin Routes ─────────────────────────────────────────── */}
+        <Route
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <DashboardLayout role="admin" />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+          <Route path="/admin/dashboard"                  element={<Lazy><AnimatedPage><AdminDashboard /></AnimatedPage></Lazy>} />
+          <Route path="/admin/expos"                      element={<Lazy><AnimatedPage><AdminExpos /></AnimatedPage></Lazy>} />
+          <Route path="/admin/expos/create"               element={<Lazy><AnimatedPage><AdminExpoCreate /></AnimatedPage></Lazy>} />
+          <Route path="/admin/expos/:id"                  element={<Lazy><AnimatedPage><AdminExpoDetail /></AnimatedPage></Lazy>} />
+          <Route path="/admin/expos/:id/edit"             element={<Lazy><AnimatedPage><AdminExpoEdit /></AnimatedPage></Lazy>} />
+          <Route path="/admin/expos/:id/floor-plan"       element={<Lazy><AnimatedPage><AdminFloorPlan /></AnimatedPage></Lazy>} />
+          <Route path="/admin/expos/:id/sessions"         element={<Lazy><AnimatedPage><AdminSessions /></AnimatedPage></Lazy>} />
+          <Route path="/admin/expos/:id/sessions/:sid"    element={<Lazy><AnimatedPage><AdminSessionDetail /></AnimatedPage></Lazy>} />
+          <Route path="/admin/exhibitors"                 element={<Lazy><AnimatedPage><AdminExhibitors /></AnimatedPage></Lazy>} />
+          <Route path="/admin/exhibitors/:id"             element={<Lazy><AnimatedPage><AdminExhibitorDetail /></AnimatedPage></Lazy>} />
+          <Route path="/admin/messages"                   element={<Lazy><AnimatedPage><AdminMessages /></AnimatedPage></Lazy>} />
+          <Route path="/admin/analytics"                  element={<Lazy><AnimatedPage><AdminAnalytics /></AnimatedPage></Lazy>} />
+          <Route path="/admin/users"                      element={<Lazy><AnimatedPage><AdminUsers /></AnimatedPage></Lazy>} />
+          <Route path="/admin/users/:id"                  element={<Lazy><AnimatedPage><AdminUserDetail /></AnimatedPage></Lazy>} />
+          <Route path="/admin/settings"                   element={<Lazy><AnimatedPage><AccountSettings /></AnimatedPage></Lazy>} />
+          <Route path="/admin/transactions"               element={<Lazy><AnimatedPage><TransactionHistory /></AnimatedPage></Lazy>} /> {/* ✅ ADD THIS */}
+          <Route path="/admin/transactions/:id" element={<Lazy><AnimatedPage><TransactionDetail /></AnimatedPage></Lazy>} />
+        </Route>
+
+        {/* ── Exhibitor Routes ─────────────────────────────────────── */}
+        <Route
+          element={
+            <ProtectedRoute allowedRoles={['exhibitor']}>
+              <DashboardLayout role="exhibitor" />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/exhibitor" element={<Navigate to="/exhibitor/dashboard" replace />} />
+          <Route path="/exhibitor/dashboard"              element={<Lazy><AnimatedPage><ExhibitorDashboard /></AnimatedPage></Lazy>} />
+          <Route path="/exhibitor/profile"                element={<Lazy><AnimatedPage><ExhibitorProfile /></AnimatedPage></Lazy>} />
+          <Route path="/exhibitor/expos"                  element={<Lazy><AnimatedPage><ExhibitorExpos /></AnimatedPage></Lazy>} />
+          <Route path="/exhibitor/expos/:id"              element={<Lazy><AnimatedPage><ExhibitorExpoDetail /></AnimatedPage></Lazy>} />
+          <Route path="/exhibitor/expos/:id/floor-plan"   element={<Lazy><AnimatedPage><ExhibitorFloorPlan /></AnimatedPage></Lazy>} />
+          <Route path="/exhibitor/sessions"               element={<Lazy><AnimatedPage><ExhibitorSessions /></AnimatedPage></Lazy>} />
+          <Route path="/exhibitor/messages"               element={<Lazy><AnimatedPage><ExhibitorMessages /></AnimatedPage></Lazy>} />
+          <Route path="/exhibitor/settings"               element={<Lazy><AnimatedPage><AccountSettings /></AnimatedPage></Lazy>} />
+          <Route path="/exhibitor/transactions"           element={<Lazy><AnimatedPage><TransactionHistory /></AnimatedPage></Lazy>} /> {/* ✅ ADD THIS */}
+          <Route path="/exhibitor/transactions/:id" element={<Lazy><AnimatedPage><TransactionDetail /></AnimatedPage></Lazy>} />
+        </Route>
+
+        {/* ── Attendee Routes ──────────────────────────────────────── */}
+        <Route
+          element={
+            <ProtectedRoute allowedRoles={['attendee']}>
+              <DashboardLayout role="attendee" />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/attendee" element={<Navigate to="/attendee/dashboard" replace />} />
+          <Route path="/attendee/dashboard"               element={<Lazy><AnimatedPage><AttendeeDashboard /></AnimatedPage></Lazy>} />
+          <Route path="/attendee/expos"                   element={<Lazy><AnimatedPage><AttendeeExpos /></AnimatedPage></Lazy>} />
+          <Route path="/attendee/expos/:id"               element={<Lazy><AnimatedPage><AttendeeExpoDetail /></AnimatedPage></Lazy>} />
+          <Route path="/attendee/sessions"                element={<Lazy><AnimatedPage><AttendeeSessions /></AnimatedPage></Lazy>} />
+          <Route path="/attendee/schedule"                element={<Lazy><AnimatedPage><AttendeeSchedule /></AnimatedPage></Lazy>} />
+          <Route path="/attendee/exhibitors"              element={<Lazy><AnimatedPage><AttendeeExhibitors /></AnimatedPage></Lazy>} />
+          <Route path="/attendee/messages"                element={<Lazy><AnimatedPage><AttendeeMessages /></AnimatedPage></Lazy>} />
+          <Route path="/attendee/settings"                element={<Lazy><AnimatedPage><AccountSettings /></AnimatedPage></Lazy>} />
+          <Route path="/attendee/transactions"            element={<Lazy><AnimatedPage><TransactionHistory /></AnimatedPage></Lazy>} /> {/* ✅ ADD THIS */}
+          <Route path="/attendee/transactions/:id" element={<Lazy><AnimatedPage><TransactionDetail /></AnimatedPage></Lazy>} />
+        </Route>
+
+        {/* ── Fallback Routes ───────────────────────────────────────── */}
+        <Route path="/unauthorised" element={<Lazy><AnimatedPage><UnauthorisedPage /></AnimatedPage></Lazy>} />
+        <Route path="*"             element={<Lazy><AnimatedPage><NotFoundPage /></AnimatedPage></Lazy>} />
+      </Routes>
+    </AnimatePresence>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
   return (
     <AuthProvider>
       <SocketProvider>
-        <AnimatePresence mode="wait">
-          <Routes>
-
-            {/* ── Public Layout Routes ─────────────────────────────────── */}
-            <Route element={<PublicLayout />}>
-              <Route
-                path="/"
-                element={<Lazy><LandingPage /></Lazy>}
-              />
-            </Route>
-
-            {/* ── Auth Routes (redirect if already logged in) ──────────── */}
-            <Route element={<PublicRoute />}>
-              <Route path="/login"    element={<Lazy><LoginPage /></Lazy>} />
-              <Route path="/register" element={<Lazy><RegisterPage /></Lazy>} />
-              <Route path="/forgot-password"         element={<Lazy><ForgotPasswordPage /></Lazy>} />
-              <Route path="/reset-password/:token"   element={<Lazy><ResetPasswordPage /></Lazy>} />
-              <Route path="/verify-email/:token"     element={<Lazy><VerifyEmailPage /></Lazy>} />
-            </Route>
-
-            {/* ── Admin Routes ─────────────────────────────────────────── */}
-            <Route
-              element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <DashboardLayout role="admin" />
-                </ProtectedRoute>
-              }
-            >
-              <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
-              <Route path="/admin/dashboard"                  element={<Lazy><AdminDashboard /></Lazy>} />
-              <Route path="/admin/expos"                      element={<Lazy><AdminExpos /></Lazy>} />
-              <Route path="/admin/expos/create"               element={<Lazy><AdminExpoCreate /></Lazy>} />
-              <Route path="/admin/expos/:id"                  element={<Lazy><AdminExpoDetail /></Lazy>} />
-              <Route path="/admin/expos/:id/edit"             element={<Lazy><AdminExpoEdit /></Lazy>} />
-              <Route path="/admin/expos/:id/floor-plan"       element={<Lazy><AdminFloorPlan /></Lazy>} />
-              <Route path="/admin/expos/:id/sessions"         element={<Lazy><AdminSessions /></Lazy>} />
-              <Route path="/admin/expos/:id/sessions/:sid"    element={<Lazy><AdminSessionDetail /></Lazy>} />
-              <Route path="/admin/exhibitors"                 element={<Lazy><AdminExhibitors /></Lazy>} />
-              <Route path="/admin/exhibitors/:id"             element={<Lazy><AdminExhibitorDetail /></Lazy>} />
-              <Route path="/admin/messages"                   element={<Lazy><AdminMessages /></Lazy>} />
-              <Route path="/admin/analytics"                  element={<Lazy><AdminAnalytics /></Lazy>} />
-              <Route path="/admin/users"                      element={<Lazy><AdminUsers /></Lazy>} />
-              <Route path="/admin/users/:id"                  element={<Lazy><AdminUserDetail /></Lazy>} />
-              <Route path="/admin/settings"                   element={<Lazy><AccountSettings /></Lazy>} />
-            </Route>
-
-            {/* ── Exhibitor Routes ─────────────────────────────────────── */}
-            <Route
-              element={
-                <ProtectedRoute allowedRoles={['exhibitor']}>
-                  <DashboardLayout role="exhibitor" />
-                </ProtectedRoute>
-              }
-            >
-              <Route path="/exhibitor" element={<Navigate to="/exhibitor/dashboard" replace />} />
-              <Route path="/exhibitor/dashboard"              element={<Lazy><ExhibitorDashboard /></Lazy>} />
-              <Route path="/exhibitor/profile"                element={<Lazy><ExhibitorProfile /></Lazy>} />
-              <Route path="/exhibitor/expos"                  element={<Lazy><ExhibitorExpos /></Lazy>} />
-              <Route path="/exhibitor/expos/:id"              element={<Lazy><ExhibitorExpoDetail /></Lazy>} />
-              <Route path="/exhibitor/expos/:id/floor-plan"   element={<Lazy><ExhibitorFloorPlan /></Lazy>} />
-              <Route path="/exhibitor/sessions"               element={<Lazy><ExhibitorSessions /></Lazy>} />
-              <Route path="/exhibitor/messages"               element={<Lazy><ExhibitorMessages /></Lazy>} />
-              <Route path="/exhibitor/settings"               element={<Lazy><AccountSettings /></Lazy>} />
-            </Route>
-
-            {/* ── Attendee Routes ──────────────────────────────────────── */}
-            <Route
-              element={
-                <ProtectedRoute allowedRoles={['attendee']}>
-                  <DashboardLayout role="attendee" />
-                </ProtectedRoute>
-              }
-            >
-              <Route path="/attendee" element={<Navigate to="/attendee/dashboard" replace />} />
-              <Route path="/attendee/dashboard"               element={<Lazy><AttendeeDashboard /></Lazy>} />
-              <Route path="/attendee/expos"                   element={<Lazy><AttendeeExpos /></Lazy>} />
-              <Route path="/attendee/expos/:id"               element={<Lazy><AttendeeExpoDetail /></Lazy>} />
-              <Route path="/attendee/sessions"                element={<Lazy><AttendeeSessions /></Lazy>} />
-              <Route path="/attendee/schedule"                element={<Lazy><AttendeeSchedule /></Lazy>} />
-              <Route path="/attendee/exhibitors"              element={<Lazy><AttendeeExhibitors /></Lazy>} />
-              <Route path="/attendee/messages"                element={<Lazy><AttendeeMessages /></Lazy>} />
-              <Route path="/attendee/settings"                element={<Lazy><AccountSettings /></Lazy>} />
-            </Route>
-
-            {/* ── Fallback Routes ───────────────────────────────────────── */}
-            <Route path="/unauthorised" element={<Lazy><UnauthorisedPage /></Lazy>} />
-            <Route path="*"             element={<Lazy><NotFoundPage /></Lazy>} />
-
-          </Routes>
-        </AnimatePresence>
+        <AnimatedRoutes />
       </SocketProvider>
     </AuthProvider>
   );

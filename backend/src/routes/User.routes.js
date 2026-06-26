@@ -5,7 +5,7 @@ const { body, param, query } = require('express-validator');
 const mongoose               = require('mongoose');
 const { validationResult }   = require('express-validator');
 const User                   = require('../models/User');
-const ExhibitorProfile       = require('../models/ExhibitorProfile');
+const ExhibitorProfile       = require('../models/Exhibitorprofile');
 
 const {
   protect,
@@ -225,6 +225,49 @@ router.get(
   }
 );
 
+router.get(
+  '/chat-search',
+  query('search')
+    .trim()
+    .notEmpty().withMessage('Search query is required.')
+    .isLength({ min: 1, max: 100 }).withMessage('Search must be between 1 and 100 characters.')
+    .escape(),
+  async (req, res, next) => {
+    try {
+      if (handleValidationErrors(req, next)) return;
+
+      const { search } = req.query;
+      const limit = Math.min(20, parseInt(req.query.limit) || 12);
+
+      // Build safe filter - only active users, exclude self
+      const filter = {
+        isActive: true,
+        _id: { $ne: req.user._id },
+        $or: [
+          { name: { $regex: search.trim(), $options: 'i' } },
+          { email: { $regex: search.trim(), $options: 'i' } },
+        ],
+      };
+
+      // Only return public, non-sensitive fields needed for chat
+      const users = await User.find(filter)
+        .select('name email role avatar') // Minimal fields only
+        .limit(limit)
+        .lean();
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          users,
+          total: users.length,
+        },
+      });
+    } catch (err) {
+      return next(err);
+    }
+  }
+);
+
 // ─── Admin-Only Routes ────────────────────────────────────────────────────────
 router.use(authorizeRoles('admin'));
 
@@ -378,6 +421,11 @@ router.delete('/:id', mongoId('id'), async (req, res, next) => {
 
     if (!user.isActive) {
       return next(createError(422, 'This account is already deactivated.'));
+    }
+
+    // 🔑 ADD THIS: Prevent deactivating other admins
+    if (user.role === 'admin') {
+      return next(createError(403, 'Cannot deactivate an admin account. Only the account owner can deactivate themselves.'));
     }
 
     user.isActive = false;

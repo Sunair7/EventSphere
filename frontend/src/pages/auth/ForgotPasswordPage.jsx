@@ -28,7 +28,7 @@ const itemVariants = {
 
 export default function ForgotPasswordPage() {
   const [submitted, setSubmitted]     = useState(false);
-  const [submittedEmail, setEmail]    = useState('');
+  const [submittedEmail, setSubmittedEmail]    = useState('');
   const [serverError, setServerError] = useState(null);
 
   const {

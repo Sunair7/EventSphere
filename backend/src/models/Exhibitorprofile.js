@@ -225,7 +225,6 @@ const ExhibitorProfileSchema = new mongoose.Schema(
 );
 
 // ─── Indexes ──────────────────────────────────────────────────────────────────
-ExhibitorProfileSchema.index({ userId: 1 });
 ExhibitorProfileSchema.index({ applicationStatus: 1 });
 ExhibitorProfileSchema.index({ companyNameSlug: 1 });
 ExhibitorProfileSchema.index({ isVerified: 1 });
@@ -410,7 +409,9 @@ ExhibitorProfileSchema.statics.getApplicationStatusCounts = function () {
 };
 
 // ─── Model Export ─────────────────────────────────────────────────────────────
-const ExhibitorProfile = mongoose.model('ExhibitorProfile', ExhibitorProfileSchema);
+const ExhibitorProfile =
+  mongoose.models.ExhibitorProfile ||
+  mongoose.model('ExhibitorProfile', ExhibitorProfileSchema);
 
 module.exports = ExhibitorProfile;
 module.exports.APPLICATION_STATUSES = APPLICATION_STATUSES;

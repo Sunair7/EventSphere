@@ -1,14 +1,15 @@
-import { useState }                    from 'react';
+import { useState, useRef }                    from 'react';  // Added useRef
 import { useForm }                     from 'react-hook-form';
 import { zodResolver }                 from '@hookform/resolvers/zod';
 import { z }                           from 'zod';
 import { useMutation }                 from '@tanstack/react-query';
 import { motion, AnimatePresence }     from 'framer-motion';
+import axios from 'axios';  // Added axios
 import {
-  User, Lock, Mail, ShieldCheck, Trash2,
+  User, Lock, Mail, ShieldCheck, Trash2, Upload,
   Eye, EyeOff, CheckCircle2, AlertCircle,
   Save, RefreshCw, LogOut,
-} from 'lucide-react';
+} from 'lucide-react';  // Added Upload
 import toast                           from 'react-hot-toast';
 import api                             from '@/utils/api';
 import { useAuth }                     from '@/context/AuthContext';
@@ -206,6 +207,8 @@ function DeactivateModal({ onConfirm, onCancel, isLoading }) {
 export default function AccountSettings() {
   const { user, updateUser, refreshUser, logout } = useAuth();
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef(null);
 
   // ── Profile form ────────────────────────────────────────────────────────────
   const {
@@ -213,6 +216,7 @@ export default function AccountSettings() {
     handleSubmit: handleProfileSubmit,
     formState:    { errors: profileErrors, isSubmitting: profileSubmitting, isDirty: profileDirty },
     reset:        resetProfile,
+    setValue,
   } = useForm({
     resolver:      zodResolver(profileSchema),
     defaultValues: { name: user?.name || '', avatar: user?.avatar || '' },
@@ -233,6 +237,43 @@ export default function AccountSettings() {
     },
     onError: (err) => toast.error(err.message || 'Failed to update profile.'),
   });
+
+  // ── Cloudinary upload ───────────────────────────────────────────────────────
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image must be under 5MB.');
+      return;
+    }
+
+    setUploadingAvatar(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', 'eventsphere_chat');
+      formData.append('folder', 'eventsphere/avatars');
+
+      const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+      const { data } = await axios.post(
+        `https://api.cloudinary.com/v1_1/${cloudName}/upload`,
+        formData
+      );
+
+      setValue('avatar', data.secure_url, { shouldDirty: true });
+      toast.success('Avatar uploaded! Save to apply.');
+    } catch (err) {
+      toast.error('Upload failed. Please try again.');
+    } finally {
+      setUploadingAvatar(false);
+      e.target.value = '';
+    }
+  };
 
   // ── Password form ────────────────────────────────────────────────────────────
   const {
@@ -264,8 +305,14 @@ export default function AccountSettings() {
       const { data } = await api.post('/auth/resend-verification');
       return data;
     },
-    onSuccess: () => toast.success('Verification email sent. Check your inbox.'),
-    onError:   (err) => toast.error(err.message || 'Failed to send verification email.'),
+    onSuccess: (data) => {
+      if (data._devVerificationToken) {
+        console.log('🔑 Dev Verification Token:', data._devVerificationToken);
+        console.log('🔗 Verify URL:', `${window.location.origin}/verify-email/${data._devVerificationToken}`);
+      }
+      toast.success('Verification email sent. Check your inbox.');
+    },
+    onError: (err) => toast.error(err.message || 'Failed to send verification email.'),
   });
 
   // ── Deactivate ───────────────────────────────────────────────────────────────
@@ -324,76 +371,53 @@ export default function AccountSettings() {
         <SettingsSection
           icon={User}
           title="Profile Information"
-          description="Update your display name and avatar URL."
+          description="Update your display name and avatar."
         >
           <form
             onSubmit={handleProfileSubmit((v) => updateProfileMutation.mutate(v))}
             noValidate
             className="flex flex-col gap-4"
           >
-            <Field
-              label="Full name"
-              htmlFor="name"
-              required
-              error={profileErrors.name?.message}
-            >
-              <input
-                id="name"
-                type="text"
-                autoComplete="name"
+            <Field label="Full name" htmlFor="name" required error={profileErrors.name?.message}>
+              <input id="name" type="text" autoComplete="name"
                 {...registerProfile('name')}
-                className={cn('input', profileErrors.name && 'input-error')}
-              />
+                className={cn('input', profileErrors.name && 'input-error')} />
             </Field>
 
-            <Field
-              label="Email address"
-              htmlFor="email-display"
-              hint="Email cannot be changed. Contact support if needed."
-            >
-              <input
-                id="email-display"
-                type="email"
-                value={user?.email || ''}
-                readOnly
-                disabled
-                className="input cursor-not-allowed"
-              />
+            <Field label="Email address" htmlFor="email-display"
+              hint="Email cannot be changed. Contact support if needed.">
+              <input id="email-display" type="email" value={user?.email || ''}
+                readOnly disabled className="input cursor-not-allowed" />
             </Field>
 
-            <Field
-              label="Avatar URL"
-              htmlFor="avatar"
-              error={profileErrors.avatar?.message}
-              hint="Paste a direct link to a publicly accessible image."
-            >
-              <input
-                id="avatar"
-                type="url"
-                placeholder="https://example.com/photo.jpg"
-                {...registerProfile('avatar')}
-                className={cn('input', profileErrors.avatar && 'input-error')}
-              />
+            <Field label="Avatar" htmlFor="avatar" error={profileErrors.avatar?.message}
+              hint="Upload an image or paste a URL.">
+              <div className="flex gap-2">
+                <input id="avatar" type="url" placeholder="https://example.com/photo.jpg"
+                  {...registerProfile('avatar')}
+                  className={cn('input flex-1', profileErrors.avatar && 'input-error')} />
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={uploadingAvatar}
+                  className="btn-ghost btn-sm gap-1 shrink-0"
+                >
+                  {uploadingAvatar ? 'Uploading…' : <><Upload size={14} /> Upload</>}
+                </button>
+                <input ref={avatarInputRef} type="file" accept="image/*"
+                  className="hidden" onChange={handleAvatarUpload} />
+              </div>
             </Field>
 
             <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={
-                  !profileDirty ||
-                  profileSubmitting ||
-                  updateProfileMutation.isPending
-                }
-                className="btn-secondary gap-2"
-              >
+              <button type="submit"
+                disabled={!profileDirty || profileSubmitting || updateProfileMutation.isPending}
+                className="btn-secondary gap-2">
                 {updateProfileMutation.isPending ? (
                   <>
-                    <motion.span
-                      animate={{ rotate: 360 }}
+                    <motion.span animate={{ rotate: 360 }}
                       transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
-                      className="inline-block h-4 w-4 rounded-full border-2
-                                 border-on-secondary/30 border-t-on-secondary"
-                    />
+                      className="inline-block h-4 w-4 rounded-full border-2 border-on-secondary/30 border-t-on-secondary" />
                     Saving…
                   </>
                 ) : (
@@ -406,39 +430,24 @@ export default function AccountSettings() {
 
         {/* ── Email verification section ────────────────────────── */}
         {!user?.isEmailVerified && (
-          <SettingsSection
-            icon={Mail}
-            title="Email Verification"
-            description="Verify your email address to unlock all platform features."
-          >
+          <SettingsSection icon={Mail} title="Email Verification"
+            description="Verify your email address to unlock all platform features.">
             <div className="flex items-start gap-3 rounded bg-warning-container px-4 py-3">
               <AlertCircle size={16} className="mt-0.5 shrink-0 text-on-warning-container" />
               <div className="flex-1">
-                <p className="text-body-sm font-medium text-on-warning-container">
-                  Your email address is not verified.
-                </p>
+                <p className="text-body-sm font-medium text-on-warning-container">Your email address is not verified.</p>
                 <p className="mt-0.5 text-body-sm text-on-warning-container/80">
-                  A verification link will be sent to{' '}
-                  <span className="font-semibold">{user?.email}</span>.
+                  A verification link will be sent to <span className="font-semibold">{user?.email}</span>.
                 </p>
               </div>
             </div>
             <div className="flex justify-end">
-              <button
-                onClick={() => resendMutation.mutate()}
+              <button onClick={() => resendMutation.mutate()}
                 disabled={resendMutation.isPending || resendMutation.isSuccess}
-                className="btn-ghost gap-2"
-              >
+                className="btn-ghost gap-2">
                 {resendMutation.isPending ? (
-                  <>
-                    <motion.span
-                      animate={{ rotate: 360 }}
-                      transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
-                      className="inline-block h-4 w-4 rounded-full border-2
-                                 border-outline/30 border-t-outline"
-                    />
-                    Sending…
-                  </>
+                  <><motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
+                    className="inline-block h-4 w-4 rounded-full border-2 border-outline/30 border-t-outline" /> Sending…</>
                 ) : resendMutation.isSuccess ? (
                   <><CheckCircle2 size={15} className="text-success" /> Email sent</>
                 ) : (
@@ -450,62 +459,26 @@ export default function AccountSettings() {
         )}
 
         {/* ── Password section ──────────────────────────────────── */}
-        <SettingsSection
-          icon={Lock}
-          title="Change Password"
-          description="Use a strong password. Changing it signs out all other active sessions."
-        >
-          <form
-            onSubmit={handlePasswordSubmit((v) => changePasswordMutation.mutate(v))}
-            noValidate
-            className="flex flex-col gap-4"
-          >
-            <Field
-              label="Current password"
-              htmlFor="current-pw"
-              required
-              error={passwordErrors.currentPassword?.message}
-            >
-              <PasswordInput
-                id="current-pw"
-                placeholder="Your current password"
-                registration={registerPassword('currentPassword')}
-                error={passwordErrors.currentPassword}
-                autoComplete="current-password"
-              />
+        <SettingsSection icon={Lock} title="Change Password"
+          description="Use a strong password. Changing it signs out all other active sessions.">
+          <form onSubmit={handlePasswordSubmit((v) => changePasswordMutation.mutate(v))}
+            noValidate className="flex flex-col gap-4">
+            <Field label="Current password" htmlFor="current-pw" required error={passwordErrors.currentPassword?.message}>
+              <PasswordInput id="current-pw" placeholder="Your current password"
+                registration={registerPassword('currentPassword')} error={passwordErrors.currentPassword}
+                autoComplete="current-password" />
             </Field>
-
-            <Field
-              label="New password"
-              htmlFor="new-pw"
-              required
-              error={passwordErrors.newPassword?.message}
-              hint="Min 8 characters with uppercase, lowercase, number and special character."
-            >
-              <PasswordInput
-                id="new-pw"
-                placeholder="New password"
-                registration={registerPassword('newPassword')}
-                error={passwordErrors.newPassword}
-                autoComplete="new-password"
-              />
+            <Field label="New password" htmlFor="new-pw" required error={passwordErrors.newPassword?.message}
+              hint="Min 8 characters with uppercase, lowercase, number and special character.">
+              <PasswordInput id="new-pw" placeholder="New password"
+                registration={registerPassword('newPassword')} error={passwordErrors.newPassword}
+                autoComplete="new-password" />
             </Field>
-
-            <Field
-              label="Confirm new password"
-              htmlFor="confirm-pw"
-              required
-              error={passwordErrors.confirmNewPassword?.message}
-            >
-              <PasswordInput
-                id="confirm-pw"
-                placeholder="Re-enter new password"
-                registration={registerPassword('confirmNewPassword')}
-                error={passwordErrors.confirmNewPassword}
-                autoComplete="new-password"
-              />
+            <Field label="Confirm new password" htmlFor="confirm-pw" required error={passwordErrors.confirmNewPassword?.message}>
+              <PasswordInput id="confirm-pw" placeholder="Re-enter new password"
+                registration={registerPassword('confirmNewPassword')} error={passwordErrors.confirmNewPassword}
+                autoComplete="new-password" />
             </Field>
-
             {changePasswordMutation.isError && (
               <div className="flex items-start gap-2 rounded bg-error-container px-3 py-2.5">
                 <AlertCircle size={15} className="mt-0.5 shrink-0 text-on-error-container" />
@@ -514,23 +487,12 @@ export default function AccountSettings() {
                 </p>
               </div>
             )}
-
             <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={passwordSubmitting || changePasswordMutation.isPending}
-                className="btn-secondary gap-2"
-              >
+              <button type="submit" disabled={passwordSubmitting || changePasswordMutation.isPending}
+                className="btn-secondary gap-2">
                 {changePasswordMutation.isPending ? (
-                  <>
-                    <motion.span
-                      animate={{ rotate: 360 }}
-                      transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
-                      className="inline-block h-4 w-4 rounded-full border-2
-                                 border-on-secondary/30 border-t-on-secondary"
-                    />
-                    Updating…
-                  </>
+                  <><motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
+                    className="inline-block h-4 w-4 rounded-full border-2 border-on-secondary/30 border-t-on-secondary" /> Updating…</>
                 ) : (
                   <><Lock size={15} /> Update Password</>
                 )}
@@ -539,12 +501,9 @@ export default function AccountSettings() {
           </form>
         </SettingsSection>
 
-        {/* ── Sign out all devices ──────────────────────────────── */}
-        <SettingsSection
-          icon={LogOut}
-          title="Sign Out"
-          description="End your current session and return to the login page."
-        >
+        {/* ── Sign out ──────────────────────────────────────────── */}
+        <SettingsSection icon={LogOut} title="Sign Out"
+          description="End your current session and return to the login page.">
           <div className="flex items-center justify-between">
             <p className="text-body-sm text-on-surface-variant">
               Signed in as <span className="font-medium text-on-surface">{user?.email}</span>
@@ -556,31 +515,23 @@ export default function AccountSettings() {
         </SettingsSection>
 
         {/* ── Danger zone ───────────────────────────────────────── */}
-        <SettingsSection
-          icon={Trash2}
-          title="Danger Zone"
-          description="Permanently deactivate your account. This action cannot be undone."
-          danger
-        >
+        <SettingsSection icon={Trash2} title="Danger Zone"
+          description="Permanently deactivate your account. This action cannot be undone." danger>
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-body-sm font-medium text-on-surface">Deactivate Account</p>
               <p className="mt-0.5 text-body-sm text-on-surface-variant">
-                Your data is preserved for audit and compliance purposes. Active booth
-                reservations remain in the system.
+                Your data is preserved for audit and compliance purposes.
               </p>
             </div>
-            <button
-              onClick={() => setShowDeactivateModal(true)}
-              className="btn-danger btn-sm shrink-0 gap-1.5"
-            >
+            <button onClick={() => setShowDeactivateModal(true)}
+              className="btn-danger btn-sm shrink-0 gap-1.5">
               <Trash2 size={14} /> Deactivate
             </button>
           </div>
         </SettingsSection>
       </div>
 
-      {/* ── Deactivate modal ──────────────────────────────────────── */}
       <AnimatePresence>
         {showDeactivateModal && (
           <DeactivateModal

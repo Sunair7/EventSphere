@@ -1,28 +1,32 @@
-'use strict';
+"use strict";
 
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
-const MESSAGE_TYPES = Object.freeze(['text', 'file', 'image', 'system']);
+const MESSAGE_TYPES = Object.freeze(["text", "file", "image", "system"]);
 
 // ─── Sub-schemas ──────────────────────────────────────────────────────────────
 const AttachmentSchema = new mongoose.Schema(
   {
-    url:          { type: String, required: true, trim: true },
-    fileName:     { type: String, required: true, trim: true, maxlength: 255 },
-    fileSizeBytes:{ type: Number, default: null },
-    mimeType:     { type: String, trim: true, default: null },
+    url: { type: String, required: true, trim: true },
+    fileName: { type: String, required: true, trim: true, maxlength: 255 },
+    fileSizeBytes: { type: Number, default: null },
+    mimeType: { type: String, trim: true, default: null },
     thumbnailUrl: { type: String, trim: true, default: null },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const ReadReceiptSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
     readAt: { type: Date, default: () => new Date() },
   },
-  { _id: false }
+  { _id: false },
 );
 
 // ─── Conversation ID Helper ───────────────────────────────────────────────────
@@ -39,75 +43,78 @@ const MessageSchema = new mongoose.Schema(
     // Stable two-party conversation key — eliminates the need for a separate
     // Conversation collection for 1-on-1 chats.
     conversationId: {
-      type:     String,
-      required: [true, 'Conversation ID is required.'],
-      index:    true,
+      type: String,
+      required: [true, "Conversation ID is required."],
+      index: true,
     },
 
     senderId: {
-      type:     mongoose.Schema.Types.ObjectId,
-      ref:      'User',
-      required: [true, 'Sender is required.'],
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: [true, "Sender is required."],
     },
 
     receiverId: {
-      type:     mongoose.Schema.Types.ObjectId,
-      ref:      'User',
-      required: [true, 'Receiver is required.'],
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: [true, "Receiver is required."],
     },
 
     type: {
-      type:    String,
-      enum:    { values: MESSAGE_TYPES, message: `Type must be one of: ${MESSAGE_TYPES.join(', ')}.` },
-      default: 'text',
+      type: String,
+      enum: {
+        values: MESSAGE_TYPES,
+        message: `Type must be one of: ${MESSAGE_TYPES.join(", ")}.`,
+      },
+      default: "text",
     },
 
     content: {
-      type:      String,
-      trim:      true,
-      maxlength: [2000, 'Message content must not exceed 2000 characters.'],
-      default:   null,
+      type: String,
+      trim: true,
+      maxlength: [2000, "Message content must not exceed 2000 characters."],
+      default: null,
     },
 
     attachment: {
-      type:    AttachmentSchema,
+      type: AttachmentSchema,
       default: null,
     },
 
     // Track which participants have read this message
     readBy: {
-      type:    [ReadReceiptSchema],
+      type: [ReadReceiptSchema],
       default: [],
     },
 
     // Legacy single-flag kept for fast unread queries (sender never reads own messages)
     isRead: {
-      type:    Boolean,
+      type: Boolean,
       default: false,
     },
 
     // Soft delete flags — each party can delete from their own view
-    deletedBySender:   { type: Boolean, default: false, select: false },
+    deletedBySender: { type: Boolean, default: false, select: false },
     deletedByReceiver: { type: Boolean, default: false, select: false },
 
     // Optional reply threading
     replyTo: {
-      type:    mongoose.Schema.Types.ObjectId,
-      ref:     'Message',
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message",
       default: null,
     },
 
     // For system-generated messages (e.g. "Booth A-12 has been approved")
     metadata: {
-      type:    mongoose.Schema.Types.Mixed,
+      type: mongoose.Schema.Types.Mixed,
       default: null,
-      select:  false,
+      select: false,
     },
 
     // Expo context — optional scoping for expo-specific conversations
     expoId: {
-      type:    mongoose.Schema.Types.ObjectId,
-      ref:     'Expo',
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Expo",
       default: null,
     },
   },
@@ -124,7 +131,7 @@ const MessageSchema = new mongoose.Schema(
       },
     },
     toObject: { virtuals: true },
-  }
+  },
 );
 
 // ─── Indexes ──────────────────────────────────────────────────────────────────
@@ -144,20 +151,20 @@ MessageSchema.index({ expoId: 1, createdAt: -1 }, { sparse: true });
 // Only fires when BOTH parties have deleted the message
 MessageSchema.index(
   { deletedBySender: 1, deletedByReceiver: 1 },
-  { sparse: true }
+  { sparse: true },
 );
 
 // ─── Virtuals ─────────────────────────────────────────────────────────────────
-MessageSchema.virtual('isReadByReceiver').get(function () {
+MessageSchema.virtual("isReadByReceiver").get(function () {
   return this.isRead;
 });
 
-MessageSchema.virtual('hasAttachment').get(function () {
+MessageSchema.virtual("hasAttachment").get(function () {
   return this.attachment !== null && this.attachment !== undefined;
 });
 
 // ─── Pre-validate: Build conversationId & content guard ───────────────────────
-MessageSchema.pre('validate', function (next) {
+MessageSchema.pre("validate", function (next) {
   // Build deterministic conversation key from the two participants
   if (this.senderId && this.receiverId) {
     this.conversationId = buildConversationId(this.senderId, this.receiverId);
@@ -165,12 +172,14 @@ MessageSchema.pre('validate', function (next) {
 
   // A message must have either text content or an attachment
   if (!this.content && !this.attachment) {
-    return next(new Error('Message must contain either text content or an attachment.'));
+    return next(
+      new Error("Message must contain either text content or an attachment."),
+    );
   }
 
   // Prevent self-messaging
   if (this.senderId?.toString() === this.receiverId?.toString()) {
-    return next(new Error('Sender and receiver cannot be the same user.'));
+    return next(new Error("Sender and receiver cannot be the same user."));
   }
 
   return next();
@@ -183,7 +192,7 @@ MessageSchema.methods.markAsRead = function (readerId) {
   if (this.receiverId.toString() !== readerId.toString()) return this;
 
   const alreadyRead = this.readBy.some(
-    (r) => r.userId.toString() === readerId.toString()
+    (r) => r.userId.toString() === readerId.toString(),
   );
 
   if (!alreadyRead) {
@@ -204,15 +213,23 @@ MessageSchema.methods.softDelete = async function (requestingUserId) {
     throw new Error('You do not have permission to delete this message.');
   }
 
-  if (isSender)   this.deletedBySender   = true;
-  if (isReceiver) this.deletedByReceiver = true;
+  // Start a session for transaction safety
+  const session = await mongoose.startSession();
+  
+  try {
+    await session.withTransaction(async () => {
+      if (isSender) this.deletedBySender = true;
+      if (isReceiver) this.deletedByReceiver = true;
 
-  // Both parties deleted → hard delete
-  if (this.deletedBySender && this.deletedByReceiver) {
-    return this.deleteOne();
+      if (this.deletedBySender && this.deletedByReceiver) {
+        await this.deleteOne({ session });
+      } else {
+        await this.save({ validateBeforeSave: false, session });
+      }
+    });
+  } finally {
+    await session.endSession();
   }
-
-  return this.save({ validateBeforeSave: false });
 };
 
 // ─── Static Methods ───────────────────────────────────────────────────────────
@@ -224,23 +241,23 @@ MessageSchema.statics.buildConversationId = buildConversationId;
 MessageSchema.statics.getConversation = function (
   userIdA,
   userIdB,
-  { page = 1, limit = 30 } = {}
+  { page = 1, limit = 30 } = {},
 ) {
   const conversationId = buildConversationId(userIdA, userIdB);
-  const requesterId    = userIdA.toString();
+  const requesterId = userIdA.toString();
 
   return this.find({
     conversationId,
     // Exclude messages the requesting user has soft-deleted
     $or: [
-      { senderId:   requesterId, deletedBySender:   { $ne: true } },
+      { senderId: requesterId, deletedBySender: { $ne: true } },
       { receiverId: requesterId, deletedByReceiver: { $ne: true } },
     ],
   })
-    .select('+deletedBySender +deletedByReceiver')
-    .populate('senderId',   'name avatar')
-    .populate('receiverId', 'name avatar')
-    .populate('replyTo',    'content senderId type')
+    .select("+deletedBySender +deletedByReceiver")
+    .populate("senderId", "name avatar")
+    .populate("receiverId", "name avatar")
+    .populate("replyTo", "content senderId type")
     .sort({ createdAt: -1 })
     .skip((page - 1) * limit)
     .limit(limit)
@@ -254,20 +271,28 @@ MessageSchema.statics.getInbox = function (userId) {
   return this.aggregate([
     {
       $match: {
-        $or: [{ senderId: uid }, { receiverId: uid }],
-        deletedBySender:   { $ne: true },
-        deletedByReceiver: { $ne: true },
+        $or: [
+          { senderId: uid, deletedBySender: { $ne: true } },
+          { receiverId: uid, deletedByReceiver: { $ne: true } },
+        ],
+        // 🔑 FIX 1: Exclude self-conversations
+        $expr: { $ne: ['$senderId', '$receiverId'] },
       },
     },
     { $sort: { createdAt: -1 } },
     {
       $group: {
-        _id:          '$conversationId',
-        lastMessage:  { $first: '$$ROOT' },
+        _id: '$conversationId',
+        lastMessage: { $first: '$$ROOT' },
         unreadCount: {
           $sum: {
             $cond: [
-              { $and: [{ $eq: ['$receiverId', uid] }, { $eq: ['$isRead', false] }] },
+              {
+                $and: [
+                  { $eq: ['$receiverId', uid] },
+                  { $eq: ['$isRead', false] },
+                ],
+              },
               1,
               0,
             ],
@@ -275,58 +300,69 @@ MessageSchema.statics.getInbox = function (userId) {
         },
       },
     },
-    { $replaceRoot: { newRoot: { $mergeObjects: ['$lastMessage', { unreadCount: '$unreadCount' }] } } },
+    {
+      $replaceRoot: {
+        newRoot: {
+          $mergeObjects: ['$lastMessage', { unreadCount: '$unreadCount' }],
+        },
+      },
+    },
     { $sort: { createdAt: -1 } },
+    // 🔑 FIX 2: Populate senderId and receiverId as full objects
+    // so the frontend getParticipant() function works correctly
     {
       $lookup: {
-        from:         'users',
-        localField:   'senderId',
+        from: 'users',
+        localField: 'senderId',
         foreignField: '_id',
-        as:           'senderInfo',
-        pipeline:     [{ $project: { name: 1, avatar: 1 } }],
+        as: 'sender',
+        pipeline: [{ $project: { name: 1, avatar: 1, role: 1 } }],
       },
     },
     {
       $lookup: {
-        from:         'users',
-        localField:   'receiverId',
+        from: 'users',
+        localField: 'receiverId',
         foreignField: '_id',
-        as:           'receiverInfo',
-        pipeline:     [{ $project: { name: 1, avatar: 1 } }],
+        as: 'receiver',
+        pipeline: [{ $project: { name: 1, avatar: 1, role: 1 } }],
       },
     },
+    // 🔑 FIX 3: Unwind the arrays so sender/receiver become objects, not arrays
     {
       $addFields: {
-        sender:   { $arrayElemAt: ['$senderInfo',   0] },
-        receiver: { $arrayElemAt: ['$receiverInfo', 0] },
+        sender: { $arrayElemAt: ['$sender', 0] },
+        receiver: { $arrayElemAt: ['$receiver', 0] },
       },
     },
-    { $project: { senderInfo: 0, receiverInfo: 0, __v: 0 } },
   ]);
 };
 
 // Total unread message count for a user — badge counter
 MessageSchema.statics.getUnreadCount = function (userId) {
   return this.countDocuments({
-    receiverId:        new mongoose.Types.ObjectId(userId),
-    isRead:            false,
+    receiverId: new mongoose.Types.ObjectId(userId),
+    isRead: false,
     deletedByReceiver: { $ne: true },
   });
 };
 
 // Bulk-mark all messages in a conversation as read
-MessageSchema.statics.markConversationAsRead = function (conversationId, readerId) {
+MessageSchema.statics.markConversationAsRead = function (
+  conversationId,
+  readerId,
+) {
   const uid = new mongoose.Types.ObjectId(readerId);
   return this.updateMany(
     {
       conversationId,
       receiverId: uid,
-      isRead:     false,
+      isRead: false,
     },
     {
-      $set:  { isRead: true },
+      $set: { isRead: true },
       $push: { readBy: { userId: uid, readAt: new Date() } },
-    }
+    },
   );
 };
 
@@ -336,35 +372,32 @@ MessageSchema.statics.getExpoMessageStats = function (expoId) {
     { $match: { expoId: new mongoose.Types.ObjectId(expoId) } },
     {
       $group: {
-        _id:              null,
-        totalMessages:    { $sum: 1 },
-        uniqueSenders:    { $addToSet: '$senderId' },
-        uniqueConversations: { $addToSet: '$conversationId' },
+        _id: null,
+        totalMessages: { $sum: 1 },
+        uniqueSenders: { $addToSet: "$senderId" },
+        uniqueConversations: { $addToSet: "$conversationId" },
         avgResponseTimeMs: {
           $avg: {
-            $subtract: [
-              { $toLong: '$updatedAt' },
-              { $toLong: '$createdAt' },
-            ],
+            $subtract: [{ $toLong: "$updatedAt" }, { $toLong: "$createdAt" }],
           },
         },
       },
     },
     {
       $project: {
-        _id:                 0,
-        totalMessages:       1,
-        uniqueSenders:       { $size: '$uniqueSenders' },
-        uniqueConversations: { $size: '$uniqueConversations' },
-        avgResponseTimeMs:   { $round: ['$avgResponseTimeMs', 0] },
+        _id: 0,
+        totalMessages: 1,
+        uniqueSenders: { $size: "$uniqueSenders" },
+        uniqueConversations: { $size: "$uniqueConversations" },
+        avgResponseTimeMs: { $round: ["$avgResponseTimeMs", 0] },
       },
     },
   ]);
 };
 
 // ─── Model Export ─────────────────────────────────────────────────────────────
-const Message = mongoose.model('Message', MessageSchema);
+const Message = mongoose.model("Message", MessageSchema);
 
 module.exports = Message;
-module.exports.MESSAGE_TYPES        = MESSAGE_TYPES;
-module.exports.buildConversationId  = buildConversationId;
+module.exports.MESSAGE_TYPES = MESSAGE_TYPES;
+module.exports.buildConversationId = buildConversationId;

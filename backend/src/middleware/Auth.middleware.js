@@ -52,6 +52,12 @@ const protect = async (req, _res, next) => {
       return next(createError(401, 'Account associated with this token no longer exists.'));
     }
 
+    // 🔑 ADD THIS CHECK:
+if (!user.isActive) {
+  return next(createError(403, 'Your account has been deactivated. Please contact support.'));
+}
+
+
     // Attach the hydrated user to the request context
     req.user = user;
     return next();
@@ -161,6 +167,26 @@ const requireProfileComplete = (req, _res, next) => {
   return next();
 };
 
+// ─── requireEmailVerified ─────────────────────────────────────────────────────
+// Blocks users who haven't verified their email address.
+// Chain after protect().
+const requireEmailVerified = (req, _res, next) => {
+  if (!req.user) {
+    return next(createError(401, 'Authentication required.'));
+  }
+
+  if (!req.user.isEmailVerified) {
+    return next(
+      createError(
+        403,
+        'Please verify your email address before performing this action. Check your inbox for the verification link.'
+      )
+    );
+  }
+
+  return next();
+};
+
 // ─── requireOwnerOrAdmin ──────────────────────────────────────────────────────
 // Ensures the requesting user is either an admin or the resource owner.
 // Expects the target userId to be available as req.params.userId or
@@ -230,6 +256,7 @@ module.exports = {
   optionalAuth,
   requireProfileComplete,
   requireOwnerOrAdmin,
+  requireEmailVerified,
   signAccessToken,
   signRefreshToken,
   setRefreshTokenCookie,

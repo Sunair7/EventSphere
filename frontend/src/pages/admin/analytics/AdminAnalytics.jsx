@@ -1,13 +1,14 @@
-import { useState }                   from 'react';
+import { useState, useRef, useEffect }                   from 'react';
 import { useQuery }                   from '@tanstack/react-query';
-import { motion, AnimatePresence }    from 'framer-motion';
+import { motion, AnimatePresence, useInView }    from 'framer-motion';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import {
   Users, Building2, BookOpen, TrendingUp,
-  RefreshCw, AlertCircle,
+  RefreshCw, AlertCircle, Sparkles, Activity,
+  ArrowUpRight, ArrowDownRight, Clock, CheckCircle2, XCircle, Star
 } from 'lucide-react';
 import { format, parseISO }          from 'date-fns';
 import api                           from '@/utils/api';
@@ -25,6 +26,38 @@ const C = {
 };
 
 const PIE_COLORS = [C.secondary, C.tertiary, C.warning, C.error, '#8b5cf6', '#ec4899'];
+
+// ─── Animated Counter ─────────────────────────────────────────────────────────
+function CountUp({ end, duration = 1.2, className = '' }) {
+  const [display, setDisplay] = useState(0);
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, margin: '-50px' });
+
+  useEffect(() => {
+    if (!inView || end === undefined || end === null) return;
+    let startTime;
+    const startValue = 0;
+    const endValue = typeof end === 'string' ? parseInt(end) : end;
+    if (isNaN(endValue)) return;
+    
+    const step = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / (duration * 1000), 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.floor(startValue + (endValue - startValue) * eased));
+      
+      if (progress < 1) requestAnimationFrame(step);
+    };
+    
+    requestAnimationFrame(step);
+  }, [inView, end, duration]);
+
+  return (
+    <span ref={ref} className={cn('tabular-nums', className)}>
+      {display.toLocaleString()}
+    </span>
+  );
+}
 
 // ─── Query hooks ──────────────────────────────────────────────────────────────
 const useExhibitorAnalytics = () =>
@@ -50,45 +83,83 @@ const useUserAnalytics = () =>
 
 // ─── Skeleton helpers ─────────────────────────────────────────────────────────
 function ChartSkeleton({ height = 240 }) {
-  return <div className="skeleton w-full rounded-md" style={{ height }} />;
+  return (
+    <div className="flex items-center justify-center" style={{ height }}>
+      <motion.div
+        animate={{ opacity: [0.3, 0.6, 0.3] }}
+        transition={{ duration: 1.5, repeat: Infinity }}
+        className="flex flex-col items-center gap-3"
+      >
+        <Activity size={24} className="text-on-surface-variant/30" />
+        <span className="font-mono text-label-sm text-on-surface-variant/40">
+          Loading chart data…
+        </span>
+      </motion.div>
+    </div>
+  );
 }
 
 function MetricSkeleton() {
   return (
-    <div className="card flex flex-col gap-2 p-4">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="card flex flex-col gap-2 p-4"
+    >
       <div className="skeleton h-4 w-20 rounded" />
       <div className="skeleton h-7 w-14 rounded" />
       <div className="skeleton h-3 w-28 rounded" />
-    </div>
+    </motion.div>
   );
 }
 
 // ─── Shared sub-components ────────────────────────────────────────────────────
-function SectionCard({ title, children, className }) {
+function SectionCard({ title, children, className, icon: Icon }) {
   return (
-    <div className={cn('card', className)}>
-      <h3 className="mb-4 text-headline-sm font-semibold text-on-surface">{title}</h3>
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35 }}
+      className={cn('card group', className)}
+    >
+      <h3 className="mb-4 text-headline-sm font-semibold text-on-surface flex items-center gap-2">
+        {Icon && <Icon size={16} className="text-secondary" />}
+        {title}
+      </h3>
       {children}
-    </div>
+    </motion.div>
   );
 }
 
-function MetricCard({ label, value, sub, color = 'bg-primary-container', iconColor = 'text-on-primary-container' }) {
+function MetricCard({ label, value, sub, color = 'bg-primary-container', iconColor = 'text-on-primary-container', delay = 0 }) {
   return (
-    <div className="card p-4 flex flex-col gap-1">
-      <p className="font-mono text-label-sm uppercase tracking-wider text-on-surface-variant">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay }}
+      whileHover={{ y: -2, transition: { duration: 0.15 } }}
+      className="card p-4 flex flex-col gap-1 hover:shadow-level-2 transition-shadow relative overflow-hidden"
+    >
+      <div className="absolute inset-0 bg-gradient-to-br from-transparent to-secondary/[0.02] opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+      <p className="font-mono text-label-sm uppercase tracking-wider text-on-surface-variant relative z-10">
         {label}
       </p>
-      <p className="font-mono text-headline-md font-bold text-on-surface">{value ?? '—'}</p>
-      {sub && <p className="font-mono text-label-sm text-on-surface-variant">{sub}</p>}
-    </div>
+      <p className="font-mono text-headline-md font-bold text-on-surface relative z-10">
+        {typeof value === 'number' ? <CountUp end={value} /> : (value ?? '—')}
+      </p>
+      {sub && <p className="font-mono text-label-sm text-on-surface-variant relative z-10">{sub}</p>}
+    </motion.div>
   );
 }
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="card shadow-level-2 !p-3 min-w-[130px]">
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="card shadow-level-2 !p-3 min-w-[130px]"
+    >
       {label && <p className="font-mono text-label-sm text-on-surface-variant mb-1">{label}</p>}
       {payload.map((entry) => (
         <div key={entry.name} className="flex items-center justify-between gap-3">
@@ -103,7 +174,7 @@ function CustomTooltip({ active, payload, label }) {
           </span>
         </div>
       ))}
-    </div>
+    </motion.div>
   );
 }
 
@@ -127,18 +198,18 @@ function ExhibitorPanel() {
         {isLoading
           ? Array.from({ length: 4 }).map((_, i) => <MetricSkeleton key={i} />)
           : [
-              { label: 'Total',      value: data?.funnel?.total,        sub: 'All registrations'     },
-              { label: 'Pending',    value: data?.funnel?.pending,      sub: 'Awaiting review'       },
-              { label: 'Approved',   value: data?.funnel?.approved,     sub: `${data?.funnel?.approvalRate ?? 0}% approval rate` },
-              { label: 'Rejected',   value: data?.funnel?.rejected,     sub: 'Not approved'          },
-            ].map(({ label, value, sub }) => (
-              <MetricCard key={label} label={label} value={value?.toLocaleString()} sub={sub} />
+              { label: 'Total',      value: data?.funnel?.total,        sub: 'All registrations',     delay: 0 },
+              { label: 'Pending',    value: data?.funnel?.pending,      sub: 'Awaiting review',       delay: 0.05 },
+              { label: 'Approved',   value: data?.funnel?.approved,     sub: `${data?.funnel?.approvalRate ?? 0}% approval rate`, delay: 0.1 },
+              { label: 'Rejected',   value: data?.funnel?.rejected,     sub: 'Not approved',          delay: 0.15 },
+            ].map(({ label, value, sub, delay }) => (
+              <MetricCard key={label} label={label} value={value} sub={sub} delay={delay} />
             ))}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Monthly applications */}
-        <SectionCard title="Monthly Application Volume">
+        <SectionCard title="Monthly Application Volume" icon={TrendingUp}>
           {isLoading ? <ChartSkeleton /> : (
             <ResponsiveContainer width="100%" height={240}>
               <AreaChart
@@ -162,8 +233,8 @@ function ExhibitorPanel() {
                 <YAxis allowDecimals={false} tick={{ fontSize: 11, fontFamily: 'JetBrains Mono', fill: '#45464d' }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} cursor={{ stroke: C.muted }} />
                 <Legend wrapperStyle={{ fontFamily: 'JetBrains Mono', fontSize: 11 }} />
-                <Area type="monotone" dataKey="total"    name="Total"    stroke={C.primary}   strokeWidth={2} fill="url(#totalGrad)"    dot={false} />
-                <Area type="monotone" dataKey="approved" name="Approved" stroke={C.secondary} strokeWidth={2} fill="url(#approvedGrad)" dot={false} />
+                <Area type="monotone" dataKey="total"    name="Total"    stroke={C.primary}   strokeWidth={2} fill="url(#totalGrad)"    dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff' }} />
+                <Area type="monotone" dataKey="approved" name="Approved" stroke={C.secondary} strokeWidth={2} fill="url(#approvedGrad)" dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff' }} />
                 <Area type="monotone" dataKey="rejected" name="Rejected" stroke={C.error}     strokeWidth={2} fill="none"               dot={false} strokeDasharray="4 2" />
               </AreaChart>
             </ResponsiveContainer>
@@ -171,7 +242,7 @@ function ExhibitorPanel() {
         </SectionCard>
 
         {/* Industry breakdown */}
-        <SectionCard title="Top Industries">
+        <SectionCard title="Top Industries" icon={Building2}>
           {isLoading ? <ChartSkeleton /> : (
             <ResponsiveContainer width="100%" height={240}>
               <BarChart
@@ -182,7 +253,11 @@ function ExhibitorPanel() {
                 <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fontFamily: 'JetBrains Mono', fill: '#45464d' }} axisLine={false} tickLine={false} />
                 <YAxis type="category" dataKey="industry" width={100} tick={{ fontSize: 11, fontFamily: 'JetBrains Mono', fill: '#45464d' }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} cursor={{ fill: '#e5eeff' }} />
-                <Bar dataKey="count" name="Companies" fill={C.secondary} radius={[0, 4, 4, 0]} maxBarSize={20} />
+                <Bar dataKey="count" name="Companies" fill={C.secondary} radius={[0, 4, 4, 0]} maxBarSize={20}>
+                  {(data?.industryBreakdown || []).map((_, idx) => (
+                    <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -190,20 +265,26 @@ function ExhibitorPanel() {
       </div>
 
       {/* Document verification */}
-      <SectionCard title="Document Verification Pipeline">
+      <SectionCard title="Document Verification Pipeline" icon={CheckCircle2}>
         {isLoading ? <ChartSkeleton height={160} /> : (
           <div className="grid grid-cols-3 gap-4">
             {[
-              { key: 'pending',  label: 'Awaiting Review', color: 'bg-warning-container',  text: 'text-on-warning-container'  },
-              { key: 'verified', label: 'Verified',        color: 'bg-success-container',  text: 'text-on-success-container'  },
-              { key: 'rejected', label: 'Flagged',         color: 'bg-error-container',    text: 'text-on-error-container'    },
-            ].map(({ key, label, color, text }) => (
-              <div key={key} className={cn('rounded-md p-4 text-center', color)}>
+              { key: 'pending',  label: 'Awaiting Review', color: 'bg-warning-container',  text: 'text-on-warning-container',  icon: Clock },
+              { key: 'verified', label: 'Verified',        color: 'bg-success-container',  text: 'text-on-success-container',  icon: CheckCircle2 },
+              { key: 'rejected', label: 'Flagged',         color: 'bg-error-container',    text: 'text-on-error-container',    icon: XCircle },
+            ].map(({ key, label, color, text, icon: Icon }) => (
+              <motion.div
+                key={key}
+                whileHover={{ scale: 1.02 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                className={cn('rounded-md p-4 text-center', color)}
+              >
+                <Icon size={20} className={cn('mx-auto mb-2', text)} />
                 <p className={cn('font-mono text-headline-md font-bold', text)}>
-                  {data?.documentVerification?.[key]?.toLocaleString() ?? 0}
+                  <CountUp end={data?.documentVerification?.[key] ?? 0} />
                 </p>
                 <p className={cn('mt-1 font-mono text-label-sm', text)}>{label}</p>
-              </div>
+              </motion.div>
             ))}
           </div>
         )}
@@ -222,7 +303,7 @@ function SessionPanel() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Format breakdown pie */}
-        <SectionCard title="Sessions by Format">
+        <SectionCard title="Sessions by Format" icon={BookOpen}>
           {isLoading ? <ChartSkeleton /> : (
             <ResponsiveContainer width="100%" height={240}>
               <PieChart>
@@ -239,6 +320,8 @@ function SessionPanel() {
                     percent > 0.05 ? `${f} ${(percent * 100).toFixed(0)}%` : ''
                   }
                   labelLine={false}
+                  animationBegin={0}
+                  animationDuration={800}
                 >
                   {(data?.formatBreakdown || []).map((_, idx) => (
                     <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
@@ -255,7 +338,7 @@ function SessionPanel() {
         </SectionCard>
 
         {/* Hourly heatmap */}
-        <SectionCard title="Sessions by Start Hour">
+        <SectionCard title="Sessions by Start Hour" icon={TrendingUp}>
           {isLoading ? <ChartSkeleton /> : (
             <ResponsiveContainer width="100%" height={240}>
               <BarChart
@@ -285,9 +368,9 @@ function SessionPanel() {
       </div>
 
       {/* Capacity utilisation table */}
-      <SectionCard title="Top Sessions by Capacity Utilisation">
+      <SectionCard title="Top Sessions by Capacity Utilisation" icon={Users}>
         {isLoading ? <ChartSkeleton height={200} /> : (
-          <div className="table-wrapper !border-0 !rounded-none">
+          <div className="table-wrapper !border-0 !rounded-none overflow-x-auto">
             <table className="data-table">
               <thead>
                 <tr>
@@ -299,8 +382,14 @@ function SessionPanel() {
                 </tr>
               </thead>
               <tbody>
-                {(data?.capacityUtilisation || []).slice(0, 8).map((s) => (
-                  <tr key={s._id} className="border-b border-outline-variant hover:bg-surface-container-low">
+                {(data?.capacityUtilisation || []).slice(0, 8).map((s, i) => (
+                  <motion.tr
+                    key={s._id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.04 }}
+                    className="border-b border-outline-variant hover:bg-surface-container-low transition-colors"
+                  >
                     <td className="px-4 py-density-high">
                       <span className="line-clamp-1 text-body-sm font-medium text-on-surface">
                         {s.title}
@@ -309,23 +398,39 @@ function SessionPanel() {
                     <td className="px-4 py-density-high">
                       <span className="badge badge-neutral capitalize">{s.format}</span>
                     </td>
-                    <td className="px-4 py-density-high text-right font-mono text-label-md text-on-surface">
+                    <td className="px-4 py-density-high text-right font-mono text-label-md text-on-surface tabular-nums">
                       {s.registered}
                     </td>
-                    <td className="px-4 py-density-high text-right font-mono text-label-md text-on-surface">
+                    <td className="px-4 py-density-high text-right font-mono text-label-md text-on-surface tabular-nums">
                       {s.maxCapacity}
                     </td>
                     <td className="px-4 py-density-high text-right">
-                      <span className={cn(
-                        'font-mono text-label-md font-semibold',
-                        s.utilisation >= 90 ? 'text-error'
-                          : s.utilisation >= 70 ? 'text-warning'
-                          : 'text-secondary'
-                      )}>
-                        {s.utilisation.toFixed(0)}%
-                      </span>
+                      <div className="flex items-center justify-end gap-2">
+                        {/* Mini progress bar */}
+                        <div className="h-1.5 w-16 rounded-full bg-surface-container-high overflow-hidden">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${s.utilisation}%` }}
+                            transition={{ duration: 0.6, delay: i * 0.05 }}
+                            className={cn(
+                              'h-full rounded-full',
+                              s.utilisation >= 90 ? 'bg-error'
+                                : s.utilisation >= 70 ? 'bg-warning'
+                                : 'bg-secondary'
+                            )}
+                          />
+                        </div>
+                        <span className={cn(
+                          'font-mono text-label-md font-semibold tabular-nums w-10 text-right',
+                          s.utilisation >= 90 ? 'text-error'
+                            : s.utilisation >= 70 ? 'text-warning'
+                            : 'text-secondary'
+                        )}>
+                          {s.utilisation.toFixed(0)}%
+                        </span>
+                      </div>
                     </td>
-                  </tr>
+                  </motion.tr>
                 ))}
                 {!data?.capacityUtilisation?.length && (
                   <tr>
@@ -341,22 +446,33 @@ function SessionPanel() {
       </SectionCard>
 
       {/* Bookmark leaderboard */}
-      <SectionCard title="Most Bookmarked Sessions">
+      <SectionCard title="Most Bookmarked Sessions" icon={Star}>
         {isLoading ? <ChartSkeleton height={180} /> : (
           <div className="flex flex-col gap-2">
             {(data?.bookmarkLeaderboard || []).slice(0, 6).map((s, i) => (
-              <div key={s._id} className="flex items-center gap-3 rounded px-3 py-2
-                                          hover:bg-surface-container-low transition-colors">
-                <span className="font-mono text-label-sm text-on-surface-variant w-5 shrink-0">
-                  #{i + 1}
+              <motion.div
+                key={s._id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.05 }}
+                whileHover={{ x: 4, transition: { duration: 0.15 } }}
+                className="flex items-center gap-3 rounded-lg px-3 py-2.5
+                           hover:bg-surface-container-low transition-all cursor-pointer"
+              >
+                <span className={cn(
+                  'font-mono text-label-sm w-6 shrink-0 text-center font-bold',
+                  i === 0 ? 'text-warning' : i === 1 ? 'text-on-surface-variant/60' : i === 2 ? 'text-error/60' : 'text-on-surface-variant/40'
+                )}>
+                  {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
                 </span>
                 <span className="flex-1 text-body-sm font-medium text-on-surface line-clamp-1">
                   {s.title}
                 </span>
                 <span className="badge badge-info gap-1 shrink-0">
-                  {s.bookmarkCount} bookmarks
+                  <Star size={10} fill="currentColor" />
+                  {s.bookmarkCount}
                 </span>
-              </div>
+              </motion.div>
             ))}
             {!data?.bookmarkLeaderboard?.length && (
               <p className="py-4 text-center font-mono text-label-sm text-on-surface-variant">
@@ -375,7 +491,6 @@ function UserPanel() {
 
   if (isError) return <ErrorState />;
 
-  // Pivot daily growth data for stacked chart
   const growthData = (data?.dailyGrowth || []).reduce((acc, { date, role, count }) => {
     const existing = acc.find((d) => d.date === date);
     if (existing) { existing[role] = count; }
@@ -396,18 +511,24 @@ function UserPanel() {
         {isLoading
           ? Array.from({ length: 4 }).map((_, i) => <MetricSkeleton key={i} />)
           : [
-              { label: 'Total Users',      value: verification.total,       sub: 'All active accounts'   },
-              { label: 'Email Verified',   value: verification.verified,    sub: `${verification.verificationRate ?? 0}% verified` },
-              { label: 'Unverified',       value: verification.unverified,  sub: 'Pending verification'  },
-              { label: 'Verification Rate',value: `${verification.verificationRate ?? 0}%`, sub: 'Of all accounts' },
-            ].map(({ label, value, sub }) => (
-              <MetricCard key={label} label={label} value={String(value ?? '—')} sub={sub} />
+              { label: 'Total Users',      value: verification.total,       sub: 'All active accounts',   delay: 0 },
+              { label: 'Email Verified',   value: verification.verified,    sub: `${verification.verificationRate ?? 0}% verified`, delay: 0.05 },
+              { label: 'Unverified',       value: verification.unverified,  sub: 'Pending verification',  delay: 0.1 },
+              { label: 'Verification Rate',value: verification.verificationRate, suffix: '%', sub: 'Of all accounts', delay: 0.15 },
+            ].map(({ label, value, sub, suffix, delay }) => (
+              <MetricCard 
+                key={label} 
+                label={label} 
+                value={value} 
+                sub={sub} 
+                delay={delay}
+              />
             ))}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Daily registrations by role */}
-        <SectionCard title="Daily Registrations by Role (30 days)">
+        <SectionCard title="Daily Registrations by Role (30 days)" icon={TrendingUp}>
           {isLoading ? <ChartSkeleton /> : (
             <ResponsiveContainer width="100%" height={240}>
               <AreaChart data={growthData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -427,16 +548,16 @@ function UserPanel() {
                 <YAxis allowDecimals={false} tick={{ fontSize: 11, fontFamily: 'JetBrains Mono', fill: '#45464d' }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} cursor={{ stroke: C.muted }} />
                 <Legend wrapperStyle={{ fontFamily: 'JetBrains Mono', fontSize: 11 }} />
-                <Area type="monotone" dataKey="attendee" name="Attendee" stroke={C.tertiary}  strokeWidth={2} fill={`url(#attendeeGrad)`}  dot={false} />
-                <Area type="monotone" dataKey="exhibitor" name="Exhibitor" stroke={C.secondary} strokeWidth={2} fill={`url(#exhibitorGrad)`} dot={false} />
-                <Area type="monotone" dataKey="admin"    name="Admin"    stroke={C.primary}   strokeWidth={2} fill={`url(#adminGrad)`}    dot={false} />
+                <Area type="monotone" dataKey="attendee" name="Attendee" stroke={C.tertiary}  strokeWidth={2} fill={`url(#attendeeGrad)`}  dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff' }} />
+                <Area type="monotone" dataKey="exhibitor" name="Exhibitor" stroke={C.secondary} strokeWidth={2} fill={`url(#exhibitorGrad)`} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff' }} />
+                <Area type="monotone" dataKey="admin"    name="Admin"    stroke={C.primary}   strokeWidth={2} fill={`url(#adminGrad)`}    dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff' }} />
               </AreaChart>
             </ResponsiveContainer>
           )}
         </SectionCard>
 
         {/* Daily active users */}
-        <SectionCard title="Daily Active Users (7 days)">
+        <SectionCard title="Daily Active Users (7 days)" icon={Users}>
           {isLoading ? <ChartSkeleton /> : (
             <ResponsiveContainer width="100%" height={240}>
               <BarChart
@@ -449,7 +570,16 @@ function UserPanel() {
                 <XAxis dataKey="date" tick={{ fontSize: 11, fontFamily: 'JetBrains Mono', fill: '#45464d' }} axisLine={false} tickLine={false} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11, fontFamily: 'JetBrains Mono', fill: '#45464d' }} axisLine={false} tickLine={false} />
                 <Tooltip content={<CustomTooltip />} cursor={{ fill: '#e5eeff' }} />
-                <Bar dataKey="activeUsers" name="Active users" fill={C.secondary} radius={[4, 4, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="activeUsers" name="Active users" fill={C.secondary} radius={[4, 4, 0, 0]} maxBarSize={40}>
+                  {(data?.loginActivity || []).map((_, idx) => (
+                    <Cell 
+                      key={idx} 
+                      fill={C.secondary}
+                      // Add gradient effect per bar
+                      style={{ filter: `brightness(${1 + idx * 0.03})` }}
+                    />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -457,10 +587,10 @@ function UserPanel() {
       </div>
 
       {/* Role distribution */}
-      <SectionCard title="Role Distribution">
+      <SectionCard title="Role Distribution" icon={Users}>
         {isLoading ? <ChartSkeleton height={100} /> : (
           <div className="flex flex-col gap-3">
-            {(data?.roleDistribution || []).map(({ role, count }) => {
+            {(data?.roleDistribution || []).map(({ role, count }, i) => {
               const total = data.roleDistribution.reduce((s, d) => s + d.count, 0);
               const pct   = total > 0 ? Math.round((count / total) * 100) : 0;
               const colors = {
@@ -471,7 +601,13 @@ function UserPanel() {
               const cfg = colors[role] || { bar: 'bg-outline', badge: 'badge-neutral' };
 
               return (
-                <div key={role} className="flex items-center gap-4">
+                <motion.div
+                  key={role}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.1 }}
+                  className="flex items-center gap-4 group/item"
+                >
                   <span className={cn('badge w-20 justify-center shrink-0 capitalize', cfg.badge)}>
                     {role}
                   </span>
@@ -480,20 +616,27 @@ function UserPanel() {
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${pct}%` }}
-                        transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
-                        className={cn('h-full rounded-full', cfg.bar)}
-                      />
+                        transition={{ duration: 0.8, ease: [0.4, 0, 0.2, 1], delay: i * 0.1 }}
+                        className={cn('h-full rounded-full relative', cfg.bar)}
+                      >
+                        {/* Shimmer effect */}
+                        <motion.div
+                          className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+                          animate={{ x: ['-100%', '200%'] }}
+                          transition={{ duration: 2, repeat: Infinity, ease: 'linear', delay: i * 0.2 }}
+                        />
+                      </motion.div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 w-24 shrink-0 justify-end">
-                    <span className="font-mono text-label-md font-semibold text-on-surface">
-                      {count.toLocaleString()}
+                  <div className="flex items-center gap-2 w-28 shrink-0 justify-end">
+                    <span className="font-mono text-label-md font-semibold text-on-surface tabular-nums">
+                      <CountUp end={count} duration={0.8} />
                     </span>
-                    <span className="font-mono text-label-sm text-on-surface-variant">
+                    <span className="font-mono text-label-sm text-on-surface-variant tabular-nums">
                       {pct}%
                     </span>
                   </div>
-                </div>
+                </motion.div>
               );
             })}
           </div>
@@ -505,13 +648,21 @@ function UserPanel() {
 
 function ErrorState() {
   return (
-    <div className="empty-state py-20">
-      <div className="empty-state-icon text-error">
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="empty-state py-20"
+    >
+      <motion.div
+        animate={{ rotate: [0, 10, -10, 0] }}
+        transition={{ duration: 0.5, delay: 0.3 }}
+        className="empty-state-icon text-error"
+      >
         <AlertCircle size={28} />
-      </div>
+      </motion.div>
       <h3 className="empty-state-title">Failed to load analytics</h3>
       <p className="empty-state-body">Please refresh the page to try again.</p>
-    </div>
+    </motion.div>
   );
 }
 
@@ -527,35 +678,54 @@ export default function AdminAnalytics() {
 
   const ActivePanel = PANELS[activeTab] || ExhibitorPanel;
 
+  // Add missing icon imports reminder:
+  // Make sure these are imported: Clock, CheckCircle2, XCircle, Star
+  // If not already imported, add them to the lucide-react import at top
+
   return (
     <div className="flex flex-col gap-6">
 
       {/* ── Header ───────────────────────────────────────────────── */}
-      <div className="page-header">
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="page-header"
+      >
         <div>
-          <h1 className="page-title">Analytics & Reporting</h1>
+          <h1 className="page-title flex items-center gap-2">
+            <Sparkles size={20} className="text-secondary" />
+            Analytics & Reporting
+          </h1>
           <p className="page-subtitle">Platform-wide performance metrics and trends</p>
         </div>
         <div className="flex items-center gap-1.5">
-          <TrendingUp size={15} className="text-secondary" />
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+          >
+            <Activity size={14} className="text-secondary" />
+          </motion.div>
           <span className="font-mono text-label-sm text-on-surface-variant">
-            Data refreshes every 5 minutes
+            Auto-refreshes every 5 min
           </span>
         </div>
-      </div>
+      </motion.div>
 
-      {/* ── Tabs ─────────────────────────────────────────────────── */}
+      {/* ── Tabs with animated indicator ─────────────────────────── */}
       <div className="flex gap-1 border-b border-outline-variant">
         {TABS.map(({ key, label, icon: Icon }) => (
-          <button
+          <motion.button
             key={key}
             onClick={() => setActiveTab(key)}
+            whileHover={{ y: -1 }}
+            whileTap={{ y: 0 }}
             className={cn(
               'relative flex items-center gap-2 px-4 py-2.5 text-body-sm font-medium',
-              'transition-colors duration-200',
+              'transition-colors duration-200 rounded-t-lg',
               activeTab === key
-                ? 'text-secondary'
-                : 'text-on-surface-variant hover:text-on-surface'
+                ? 'text-secondary bg-secondary/5'
+                : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
             )}
           >
             <Icon size={15} />
@@ -564,9 +734,10 @@ export default function AdminAnalytics() {
               <motion.span
                 layoutId="analytics-tab-indicator"
                 className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-t"
+                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
               />
             )}
-          </button>
+          </motion.button>
         ))}
       </div>
 
@@ -574,10 +745,10 @@ export default function AdminAnalytics() {
       <AnimatePresence mode="wait">
         <motion.div
           key={activeTab}
-          initial={{ opacity: 0, y: 8  }}
-          animate={{ opacity: 1, y: 0  }}
-          exit={{ opacity: 0, y: -4    }}
-          transition={{ duration: 0.2  }}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
         >
           <ActivePanel />
         </motion.div>

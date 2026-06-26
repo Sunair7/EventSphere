@@ -17,6 +17,13 @@ const {
 } = require('../controllers/Auth.controller');
 
 const {
+  loginLimiter,
+  forgotPasswordLimiter,
+  resendVerificationLimiter,
+  registerLimiter,
+} = require('../config/rateLimiter');
+
+const {
   protect,
   verifyRefreshToken,
 } = require('../middleware/Auth.middleware');
@@ -141,9 +148,9 @@ const changePasswordValidation = [
 ];
 
 // ─── Public Routes ────────────────────────────────────────────────────────────
-router.post('/register',          registerValidation,        register);
-router.post('/login',             loginValidation,           login);
-router.post('/forgot-password',   forgotPasswordValidation,  forgotPassword);
+router.post('/register', registerLimiter, registerValidation, register);
+router.post('/login', loginLimiter, loginValidation, login);
+router.post('/forgot-password', forgotPasswordLimiter, forgotPasswordValidation, forgotPassword);
 router.patch('/reset-password/:token',  resetPasswordValidation,   resetPassword);
 router.post('/verify-email/:token',     verifyEmailValidation,     verifyEmail);
 
@@ -155,7 +162,7 @@ router.use(protect);
 
 router.get('/me',                                       getMe);
 router.post('/logout',                                  logout);
-router.post('/resend-verification',                     resendVerification);
+router.post('/resend-verification', protect, resendVerificationLimiter, resendVerification);
 router.patch('/change-password', changePasswordValidation, changePassword);
 
 module.exports = router;

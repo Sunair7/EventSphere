@@ -1,6 +1,7 @@
 import { useState, useCallback }              from 'react';
 import { Link, useSearchParams }              from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/context/AuthContext'; 
 import { motion, AnimatePresence }            from 'framer-motion';
 import {
   Search, X, Users, Eye, ShieldCheck,
@@ -62,8 +63,8 @@ function RowActions({ user, currentUserId, onToggleActive }) {
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="rounded p-1.5 text-on-surface-variant hover:bg-surface-container
-                   hover:text-on-surface transition-colors"
+        className="rounded p-1.5 text-on-surface-variant hover:bg-surface-container/100
+                    hover:text-on-surface transition-colors border border-outline-variant"
         aria-label="Row actions"
         aria-haspopup="true"
         aria-expanded={open}
@@ -101,7 +102,7 @@ function RowActions({ user, currentUserId, onToggleActive }) {
                 <Mail size={14} /> Send email
               </a>
 
-              {!isSelf && (
+              {!isSelf && user.role !== 'admin' && ( 
                 <>
                   <div className="my-1 h-px bg-outline-variant" />
                   <button
@@ -177,6 +178,7 @@ function ToggleActiveModal({ user, onConfirm, onCancel, isMutating }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function AdminUsers() {
+  const { user: currentUser } = useAuth();  
   const [searchParams, setSearchParams]       = useSearchParams();
   const [toggleTarget, setToggleTarget]       = useState(null);
   const queryClient                           = useQueryClient();
@@ -441,7 +443,7 @@ export default function AdminUsers() {
                       <td className="px-4 py-density-high">
                         <RowActions
                           user={user}
-                          currentUserId={null}
+                          currentUserId={currentUser?._id} 
                           onToggleActive={setToggleTarget}
                         />
                       </td>

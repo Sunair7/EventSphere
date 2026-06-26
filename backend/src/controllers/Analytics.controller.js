@@ -4,7 +4,7 @@ const mongoose         = require('mongoose');
 const Expo             = require('../models/Expo');
 const Booth            = require('../models/Booth');
 const Session          = require('../models/Session');
-const ExhibitorProfile = require('../models/ExhibitorProfile');
+const ExhibitorProfile = require('../models/Exhibitorprofile');
 const User             = require('../models/User');
 const Message          = require('../models/Message');
 
@@ -62,7 +62,7 @@ const getDashboardOverview = async (_req, res, next) => {
 
       // ── Global Booth Allocation Summary ───────────────────────────────────
       Booth.aggregate([
-        { $match: { isActive: true } },
+        { $match: { isDeleted: false } },
         {
           $group: {
             _id:          '$status',
@@ -199,7 +199,7 @@ const getExpoAnalytics = async (req, res, next) => {
 
       // ── Booth Revenue Breakdown by Booth Type ─────────────────────────────
       Booth.aggregate([
-        { $match: { expoId: oid, isActive: true } },
+        { $match: { expoId: oid, isDeleted: false } },
         {
           $group: {
             _id:          '$type',

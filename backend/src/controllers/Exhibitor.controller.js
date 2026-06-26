@@ -2,8 +2,9 @@
 
 const mongoose             = require('mongoose');
 const { validationResult } = require('express-validator');
-const ExhibitorProfile     = require('../models/ExhibitorProfile');
+const ExhibitorProfile     = require('../models/Exhibitorprofile');
 const User                 = require('../models/User');
+const Notification         = require('../models/Notification');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const createError = (statusCode, message) => {
@@ -71,6 +72,16 @@ const createProfile = async (req, res, next) => {
       socialLinks:   socialLinks  || {},
     });
 
+    // Notify all admins
+await Notification.notifyRole(req.app.get('io'), 'admin', {
+  type: 'application_submitted',
+  title: `New application: ${profile.companyName}`,
+  body: `${req.user.name} has submitted an exhibitor application for review.`,
+  link: `/admin/exhibitors/${profile._id}`,
+  referenceId: profile._id,
+  referenceModel: 'ExhibitorProfile',
+});
+
     // Notify admins of a new profile awaiting review
     emitNotification(req,
       { role: 'admin' },
@@ -98,8 +109,15 @@ const getMyProfile = async (req, res, next) => {
   try {
     const profile = await ExhibitorProfile.findByUserId(req.user._id)
       .populate('userId',               'name email isEmailVerified createdAt')
-      .populate('assignedBooths.boothId', 'boothNumber dimensions status gridCoordinates')
-      .populate('assignedBooths.expoId',  'title startDate endDate status');
+      .populate({
+        path: 'assignedBooths.boothId',  // ✅ Populate the booth data
+        select: 'boothNumber dimensions status pricing expoId'
+      })
+      .populate({
+        path: 'assignedBooths.expoId',   // ✅ Populate the expo data
+        select: 'title status startDate endDate'
+      })
+      .lean();
 
     if (!profile) {
       return next(createError(404, 'Exhibitor profile not found. Please create your profile first.'));
@@ -289,7 +307,8 @@ const getPublicExhibitors = async (req, res, next) => {
 
     const [profiles, total] = await Promise.all([
       ExhibitorProfile.find(filter)
-        .select('companyName tagline description industry products logo bannerImage socialLinks isVerified companyNameSlug')
+        .select('companyName tagline description industry products logo bannerImage socialLinks isVerified companyNameSlug userId contactPerson')
+        .populate('userId', 'name email role avatar') 
         .sort({ companyName: 1 })
         .skip(skip)
         .limit(limit)
@@ -345,6 +364,16 @@ const approveApplication = async (req, res, next) => {
       }
     );
 
+    await Notification.createAndEmit(req.app.get('io'), {
+  recipient: profile.userId,
+  type: 'application_approved',
+  title: 'Application Approved! 🎉',
+  body: `Your exhibitor application for "${profile.companyName}" has been approved. You can now browse expos and reserve booths.`,
+  link: '/exhibitor/expos',
+  referenceId: profile._id,
+  referenceModel: 'ExhibitorProfile',
+});
+
     return res.status(200).json({
       success: true,
       message: `Application for "${profile.companyName}" approved successfully.`,
@@ -388,6 +417,16 @@ const rejectApplication = async (req, res, next) => {
       }
     );
 
+    await Notification.createAndEmit(req.app.get('io'), {
+  recipient: profile.userId,
+  type: 'application_rejected',
+  title: 'Application Not Approved',
+  body: `Your application for "${profile.companyName}" was not approved. Reason: ${note || 'No reason provided'}. Please update and resubmit.`,
+  link: '/exhibitor/profile',
+  referenceId: profile._id,
+  referenceModel: 'ExhibitorProfile',
+});
+
     return res.status(200).json({
       success: true,
       message: `Application for "${profile.companyName}" rejected.`,
@@ -425,6 +464,16 @@ const suspendExhibitor = async (req, res, next) => {
         note:      note || null,
       }
     );
+
+    await Notification.createAndEmit(req.app.get('io'), {
+  recipient: profile.userId,
+  type: 'application_suspended',
+  title: 'Account Suspended',
+  body: `Your exhibitor account for "${profile.companyName}" has been suspended. Contact the organiser for details.`,
+  link: '/exhibitor/profile',
+  referenceId: profile._id,
+  referenceModel: 'ExhibitorProfile',
+});
 
     return res.status(200).json({
       success: true,
@@ -552,6 +601,19 @@ const reviewDocument = async (req, res, next) => {
         message:     `Your document has been ${status === 'verified' ? 'verified' : 'flagged for review'}.`,
       }
     );
+
+    await Notification.createAndEmit(req.app.get('io'), {
+  recipient: profile.userId,
+  type: status === 'verified' ? 'document_verified' : 'document_flagged',
+  title: status === 'verified' ? 'Document Verified ✅' : 'Document Flagged ⚠️',
+  body: status === 'verified'
+    ? `Your document has been verified.`
+    : `Your document has been flagged for review. Reason: ${note || 'No reason provided'}.`,
+  link: '/exhibitor/profile',
+  referenceId: profile._id,
+  referenceModel: 'ExhibitorProfile',
+});
+
 
     return res.status(200).json({
       success: true,

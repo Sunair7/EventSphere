@@ -1,4 +1,4 @@
-import { useState }                              from 'react';
+import { useState, useRef }                      from 'react';
 import { useParams, Link, useNavigate }         from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence }              from 'framer-motion';
@@ -7,7 +7,9 @@ import {
   Building2, CalendarDays, MapPin, Users,
   Send, XCircle, Trash2, BarChart3,
   CheckCircle2, Clock, AlertCircle, RefreshCw,
-  ExternalLink, Tag, Globe, Lock,
+  ExternalLink, Tag, Globe, Lock, Image,
+  Upload, X, Loader2, ChevronLeft, ChevronRight,
+  Sparkles,
 } from 'lucide-react';
 import { format }                               from 'date-fns';
 import toast                                    from 'react-hot-toast';
@@ -51,24 +53,322 @@ function SessionRowSkeleton() {
   );
 }
 
+// ─── Banner Upload Component ──────────────────────────────────────────────────
+function BannerUpload({ expoId, currentBanner, onSuccess }) {
+  const [uploading, setUploading] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const fileRef = useRef(null);
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Image must be under 10MB.');
+      return;
+    }
+
+    // Show preview
+    setPreview(URL.createObjectURL(file));
+    
+    // Upload
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('banner', file);
+      
+      const { data } = await api.post(`/expos/${expoId}/banner`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      
+      toast.success('Banner uploaded successfully!');
+      onSuccess?.(data.data.banner);
+    } catch (err) {
+      toast.error(err.message || 'Failed to upload banner.');
+      setPreview(null);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemove = async () => {
+    try {
+      await api.delete(`/expos/${expoId}/banner`);
+      toast.success('Banner removed.');
+      setPreview(null);
+      onSuccess?.(null);
+    } catch (err) {
+      toast.error(err.message || 'Failed to remove banner.');
+    }
+  };
+
+  const displayUrl = preview || currentBanner?.url;
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Banner preview */}
+      {displayUrl ? (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="relative group rounded-lg overflow-hidden border border-outline-variant aspect-video bg-surface-container-low"
+        >
+          <img
+            src={displayUrl}
+            alt="Expo banner"
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="btn-ghost btn-sm gap-1.5 bg-white/20 text-white hover:bg-white/30"
+            >
+              <Upload size={14} /> Change
+            </button>
+            <button
+              onClick={handleRemove}
+              className="btn-ghost btn-sm gap-1.5 bg-white/20 text-white hover:bg-error/60"
+            >
+              <Trash2 size={14} /> Remove
+            </button>
+          </div>
+        </motion.div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          onClick={() => fileRef.current?.click()}
+          className={cn(
+            'flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed aspect-video',
+            'cursor-pointer transition-all duration-200',
+            'border-outline-variant hover:border-secondary/50 hover:bg-surface-container-low'
+          )}
+        >
+          {uploading ? (
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 size={24} className="animate-spin-slow text-secondary" />
+              <span className="font-mono text-label-sm text-on-surface-variant">Uploading…</span>
+            </div>
+          ) : (
+            <>
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
+                <Image size={18} />
+              </div>
+              <div className="text-center">
+                <p className="text-body-sm font-medium text-on-surface">Add banner image</p>
+                <p className="font-mono text-label-sm text-on-surface-variant mt-0.5">
+                  Recommended: 1200×630 · Max 10MB
+                </p>
+              </div>
+            </>
+          )}
+        </motion.div>
+      )}
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFile}
+        className="hidden"
+      />
+    </div>
+  );
+}
+
+// ─── Gallery Component ────────────────────────────────────────────────────────
+function GalleryManager({ expoId, images = [], onUpdate }) {
+  const [uploading, setUploading] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(null);
+  const fileRef = useRef(null);
+
+  const handleFiles = async (e) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+
+    const formData = new FormData();
+    Array.from(files).forEach((file) => {
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error(`"${file.name}" exceeds 10MB limit.`);
+        return;
+      }
+      formData.append('gallery', file);
+    });
+
+    setUploading(true);
+    try {
+      const { data } = await api.post(`/expos/${expoId}/gallery`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      toast.success(`${files.length} image(s) added to gallery.`);
+      onUpdate?.(data.data.gallery);
+    } catch (err) {
+      toast.error(err.message || 'Failed to upload images.');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const handleDelete = async (imageId) => {
+    try {
+      await api.delete(`/expos/${expoId}/gallery/${imageId}`);
+      toast.success('Image removed from gallery.');
+      const updated = images.filter((img) => img._id !== imageId);
+      onUpdate?.(updated);
+    } catch (err) {
+      toast.error(err.message || 'Failed to delete image.');
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Gallery grid */}
+      {images.length > 0 ? (
+        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
+          {images.map((img, i) => (
+            <motion.div
+              key={img._id}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: i * 0.03 }}
+              className="relative group rounded-md overflow-hidden border border-outline-variant aspect-square cursor-pointer"
+              onClick={() => setLightboxIndex(i)}
+            >
+              <img
+                src={img.url}
+                alt={img.altText || `Gallery image ${i + 1}`}
+                className="w-full h-full object-cover"
+                loading="lazy"
+              />
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDelete(img._id); }}
+                  className="p-1.5 rounded bg-error/80 text-white hover:bg-error transition-colors"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      ) : (
+        <div className="py-8 text-center border-2 border-dashed border-outline-variant rounded-lg">
+          <Image size={24} className="mx-auto text-on-surface-variant/30" />
+          <p className="mt-2 text-body-sm text-on-surface-variant">No gallery images yet.</p>
+        </div>
+      )}
+
+      {/* Upload button */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading || images.length >= 20}
+          className="btn-ghost btn-sm gap-1.5"
+        >
+          {uploading ? (
+            <Loader2 size={14} className="animate-spin-slow" />
+          ) : (
+            <Upload size={14} />
+          )}
+          {uploading ? 'Uploading…' : 'Add Images'}
+        </button>
+        <span className="font-mono text-label-sm text-on-surface-variant">
+          {images.length}/20 images
+        </span>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={handleFiles}
+          className="hidden"
+        />
+      </div>
+
+      {/* Lightbox */}
+      <AnimatePresence>
+        {lightboxIndex !== null && images[lightboxIndex] && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-modal bg-black/90 flex items-center justify-center"
+            onClick={() => setLightboxIndex(null)}
+          >
+            <button
+              onClick={() => setLightboxIndex(null)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20"
+            >
+              <X size={20} />
+            </button>
+
+            {lightboxIndex > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex - 1); }}
+                className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 text-white hover:bg-white/20"
+              >
+                <ChevronLeft size={24} />
+              </button>
+            )}
+
+            <motion.img
+              key={lightboxIndex}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              src={images[lightboxIndex].url}
+              alt={images[lightboxIndex].altText || `Gallery image ${lightboxIndex + 1}`}
+              className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+
+            {lightboxIndex < images.length - 1 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex + 1); }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 text-white hover:bg-white/20"
+              >
+                <ChevronRight size={24} />
+              </button>
+            )}
+
+            <div className="absolute bottom-4 text-white font-mono text-label-sm">
+              {lightboxIndex + 1} / {images.length}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 // ─── Stat card ────────────────────────────────────────────────────────────────
 function StatCard({ icon: Icon, iconBg, iconFg, label, value, sub, to }) {
   const content = (
-    <div className="card flex flex-col gap-3 p-4 h-full">
-      <div className={cn('flex h-9 w-9 items-center justify-center rounded', iconBg)}>
+    <motion.div
+      whileHover={{ y: -2 }}
+      transition={{ duration: 0.15 }}
+      className="card flex flex-col gap-3 p-4 h-full hover:shadow-level-2 transition-shadow duration-200 relative overflow-hidden"
+    >
+      <div className="absolute inset-0 bg-gradient-to-br from-transparent to-secondary/[0.02] opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+      <div className={cn('flex h-9 w-9 items-center justify-center rounded-lg relative z-10', iconBg)}>
         <Icon size={17} className={iconFg} />
       </div>
-      <div>
+      <div className="relative z-10">
         <p className="font-mono text-headline-sm font-bold text-on-surface">{value ?? '—'}</p>
         <p className="text-body-sm text-on-surface-variant">{label}</p>
         {sub && <p className="font-mono text-label-sm text-on-surface-variant mt-0.5">{sub}</p>}
       </div>
-    </div>
+    </motion.div>
   );
 
   if (to) {
     return (
-      <Link to={to} className="hover:shadow-level-2 transition-shadow duration-200 rounded-md block">
+      <Link to={to} className="block">
         {content}
       </Link>
     );
@@ -88,16 +388,32 @@ function ConfirmModal({ action, title, body, onConfirm, onCancel, isLoading,
         transition={{ duration: 0.18 }}
         className="modal-panel max-w-md p-6"
       >
-        <div className={cn('mb-4 flex h-10 w-10 items-center justify-center rounded-md', iconBg)}>
+        <motion.div
+          initial={{ rotate: -10, scale: 0 }}
+          animate={{ rotate: 0, scale: 1 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 20, delay: 0.1 }}
+          className={cn('mb-4 flex h-10 w-10 items-center justify-center rounded-md', iconBg)}
+        >
           <Icon size={18} className={iconFg} />
-        </div>
+        </motion.div>
         <h2 className="mb-1 text-headline-sm font-semibold text-on-surface">{title}</h2>
         <p className="mb-5 text-body-sm text-on-surface-variant">{body}</p>
         <div className="flex justify-end gap-3">
           <button onClick={onCancel} disabled={isLoading} className="btn-ghost">Cancel</button>
-          <button onClick={onConfirm} disabled={isLoading} className={confirmClass}>
-            {isLoading ? 'Processing…' : confirmLabel}
-          </button>
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={onConfirm}
+            disabled={isLoading}
+            className={cn(confirmClass, 'flex items-center gap-2')}
+          >
+            {isLoading ? (
+              <>
+                <RefreshCw size={14} className="animate-spin-slow" />
+                Processing…
+              </>
+            ) : confirmLabel}
+          </motion.button>
         </div>
       </motion.div>
     </div>
@@ -109,7 +425,7 @@ export default function AdminExpoDetail() {
   const { id }       = useParams();
   const navigate     = useNavigate();
   const queryClient  = useQueryClient();
-  const [modal, setModal] = useState(null); // 'publish' | 'cancel' | 'delete'
+  const [modal, setModal] = useState(null);
 
   // ── Fetch expo ──────────────────────────────────────────────────────────────
   const { data: expo, isLoading: expoLoading, isError } = useQuery({
@@ -148,13 +464,13 @@ export default function AdminExpoDetail() {
 
   const publishMutation = useMutation({
     mutationFn: () => api.patch(`/expos/${id}/status`, { status: 'published' }),
-    onSuccess:  () => { toast.success('Expo published successfully.'); invalidate(); setModal(null); },
+    onSuccess:  () => { toast.success('Expo published successfully.', { icon: '✅' }); invalidate(); setModal(null); },
     onError:    (err) => toast.error(err.message || 'Failed to publish expo.'),
   });
 
   const cancelMutation = useMutation({
     mutationFn: () => api.patch(`/expos/${id}/status`, { status: 'cancelled' }),
-    onSuccess:  () => { toast.success('Expo cancelled.'); invalidate(); setModal(null); },
+    onSuccess:  () => { toast.success('Expo cancelled.', { icon: '❌' }); invalidate(); setModal(null); },
     onError:    (err) => toast.error(err.message || 'Failed to cancel expo.'),
   });
 
@@ -171,13 +487,23 @@ export default function AdminExpoDetail() {
   // ── Error state ─────────────────────────────────────────────────────────────
   if (isError) {
     return (
-      <div className="empty-state py-20">
-        <div className="empty-state-icon text-error"><AlertCircle size={28} /></div>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="empty-state py-20"
+      >
+        <motion.div
+          animate={{ rotate: [0, 10, -10, 0] }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+          className="empty-state-icon text-error"
+        >
+          <AlertCircle size={28} />
+        </motion.div>
         <h3 className="empty-state-title">Expo not found</h3>
         <Link to="/admin/expos" className="btn-ghost btn-sm mt-3 gap-1.5">
           <ArrowLeft size={14} /> Back to expos
         </Link>
-      </div>
+      </motion.div>
     );
   }
 
@@ -189,7 +515,12 @@ export default function AdminExpoDetail() {
       <div className="flex flex-col gap-6">
 
         {/* ── Header ──────────────────────────────────────────────── */}
-        <div className="flex items-start justify-between gap-4 flex-wrap">
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="flex items-start justify-between gap-4 flex-wrap"
+        >
           <div className="flex items-center gap-3">
             <Link to="/admin/expos" className="btn-ghost btn-sm gap-1.5">
               <ArrowLeft size={15} /> Expos
@@ -199,12 +530,18 @@ export default function AdminExpoDetail() {
                 <div className="skeleton h-7 w-64 rounded" />
               ) : (
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-headline-md font-semibold text-on-surface">
+                  <h1 className="text-headline-md font-semibold text-on-surface flex items-center gap-2">
+                    <Sparkles size={18} className="text-secondary" />
                     {expo?.title}
                   </h1>
-                  <span className={cn('badge', STATUS_BADGE[expo?.status] || 'badge-neutral')}>
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 300 }}
+                    className={cn('badge', STATUS_BADGE[expo?.status] || 'badge-neutral')}
+                  >
                     {expo?.status}
-                  </span>
+                  </motion.span>
                   {expo?.isPublic === false && (
                     <span className="badge badge-neutral gap-1">
                       <Lock size={10} /> Private
@@ -217,7 +554,12 @@ export default function AdminExpoDetail() {
 
           {/* Action buttons */}
           {!expoLoading && expo && (
-            <div className="flex items-center gap-2 flex-wrap">
+            <motion.div
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1 }}
+              className="flex items-center gap-2 flex-wrap"
+            >
               <Link to={`/admin/expos/${id}/floor-plan`} className="btn-ghost btn-sm gap-1.5">
                 <LayoutGrid size={14} /> Floor Plan
               </Link>
@@ -229,25 +571,58 @@ export default function AdminExpoDetail() {
               </Link>
 
               {expo.status === 'draft' && (
-                <button onClick={() => setModal('publish')} className="btn-secondary btn-sm gap-1.5">
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setModal('publish')}
+                  className="btn-secondary btn-sm gap-1.5"
+                >
                   <Send size={14} /> Publish
-                </button>
+                </motion.button>
               )}
               {['draft', 'published', 'ongoing'].includes(expo.status) && (
-                <button onClick={() => setModal('cancel')}
-                  className="btn-ghost btn-sm gap-1.5 text-error hover:bg-error-container">
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setModal('cancel')}
+                  className="btn-ghost btn-sm gap-1.5 text-error hover:bg-error-container"
+                >
                   <XCircle size={14} /> Cancel
-                </button>
+                </motion.button>
               )}
               {expo.status !== 'ongoing' && (
-                <button onClick={() => setModal('delete')}
-                  className="btn-ghost btn-sm gap-1.5 text-error hover:bg-error-container">
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setModal('delete')}
+                  className="btn-ghost btn-sm gap-1.5 text-error hover:bg-error-container"
+                >
                   <Trash2 size={14} /> Delete
-                </button>
+                </motion.button>
               )}
-            </div>
+            </motion.div>
           )}
-        </div>
+        </motion.div>
+
+        {/* ── Banner ───────────────────────────────────────────────── */}
+        {!expoLoading && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="card"
+          >
+            <h2 className="text-headline-sm font-semibold text-on-surface mb-3 flex items-center gap-2">
+              <Image size={16} className="text-secondary" />
+              Banner Image
+            </h2>
+            <BannerUpload
+              expoId={id}
+              currentBanner={expo?.banner}
+              onSuccess={() => invalidate()}
+            />
+          </motion.div>
+        )}
 
         {/* ── Expo meta ────────────────────────────────────────────── */}
         {expoLoading ? (
@@ -257,9 +632,14 @@ export default function AdminExpoDetail() {
             ))}
           </div>
         ) : expo && (
-          <div className="card flex flex-col gap-4">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="card flex flex-col gap-4"
+          >
             {expo.description && (
-              <p className="text-body-sm text-on-surface-variant leading-relaxed line-clamp-3">
+              <p className="text-body-sm text-on-surface-variant leading-relaxed">
                 {expo.description}
               </p>
             )}
@@ -303,7 +683,6 @@ export default function AdminExpoDetail() {
               </div>
             )}
 
-            {/* Created by */}
             <div className="flex items-center justify-between border-t border-outline-variant pt-3">
               <p className="font-mono text-label-sm text-on-surface-variant">
                 Created by{' '}
@@ -319,7 +698,27 @@ export default function AdminExpoDetail() {
                 <BarChart3 size={12} /> Analytics
               </Link>
             </div>
-          </div>
+          </motion.div>
+        )}
+
+        {/* ── Gallery ──────────────────────────────────────────────── */}
+        {!expoLoading && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+            className="card"
+          >
+            <h2 className="text-headline-sm font-semibold text-on-surface mb-3 flex items-center gap-2">
+              <Image size={16} className="text-secondary" />
+              Gallery
+            </h2>
+            <GalleryManager
+              expoId={id}
+              images={expo?.gallery || []}
+              onUpdate={() => invalidate()}
+            />
+          </motion.div>
         )}
 
         {/* ── Stats row ────────────────────────────────────────────── */}
@@ -371,8 +770,9 @@ export default function AdminExpoDetail() {
         {/* ── Booth allocation bar ─────────────────────────────────── */}
         {!statsLoading && boothStats.total > 0 && (
           <motion.div
-            initial={{ opacity: 0, y: 6 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
             className="card"
           >
             <div className="flex items-center justify-between mb-3">
@@ -385,7 +785,6 @@ export default function AdminExpoDetail() {
               </Link>
             </div>
 
-            {/* Segmented bar */}
             <div className="flex h-3 w-full rounded-full overflow-hidden gap-0.5 mb-3">
               {[
                 { key: 'assigned', color: 'bg-primary',   flex: boothStats.assigned  || 0 },
@@ -397,8 +796,14 @@ export default function AdminExpoDetail() {
                   initial={{ flex: 0 }}
                   animate={{ flex: seg.flex }}
                   transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
-                  className={seg.color}
-                />
+                  className={cn(seg.color, 'relative overflow-hidden')}
+                >
+                  <motion.div
+                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                    animate={{ x: ['-100%', '100%'] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                  />
+                </motion.div>
               ))}
             </div>
 
@@ -420,7 +825,7 @@ export default function AdminExpoDetail() {
               {boothStats.totalRevenue > 0 && (
                 <div className="ml-auto flex items-center gap-1.5 font-mono text-label-md text-secondary">
                   <CheckCircle2 size={13} />
-                  ${boothStats.totalRevenue.toLocaleString()} projected revenue
+                  ${(boothStats.totalRevenue / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} projected revenue
                 </div>
               )}
             </div>
@@ -428,7 +833,12 @@ export default function AdminExpoDetail() {
         )}
 
         {/* ── Sessions table ───────────────────────────────────────── */}
-        <div className="flex flex-col gap-3">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+          className="flex flex-col gap-3"
+        >
           <div className="flex items-center justify-between">
             <h2 className="text-headline-sm font-semibold text-on-surface">Sessions</h2>
             <Link to={`/admin/expos/${id}/sessions`} className="btn-ghost btn-sm gap-1.5">
@@ -454,7 +864,13 @@ export default function AdminExpoDetail() {
                   <tr>
                     <td colSpan={5} className="py-10 text-center">
                       <div className="empty-state py-4">
-                        <div className="empty-state-icon mx-auto mb-2"><BookOpen size={20} /></div>
+                        <motion.div
+                          animate={{ y: [0, -5, 0] }}
+                          transition={{ repeat: Infinity, duration: 3 }}
+                          className="empty-state-icon mx-auto mb-2"
+                        >
+                          <BookOpen size={20} />
+                        </motion.div>
                         <p className="empty-state-title text-body-sm">No sessions yet</p>
                         <Link to={`/admin/expos/${id}/sessions`}
                           className="btn-secondary btn-sm mt-3 gap-1 inline-flex">
@@ -464,10 +880,15 @@ export default function AdminExpoDetail() {
                     </td>
                   </tr>
                 ) : (
-                  sessions.map((session) => (
-                    <tr key={session._id}
+                  sessions.map((session, i) => (
+                    <motion.tr
+                      key={session._id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.04 }}
                       className="border-b border-outline-variant hover:bg-surface-container-low
-                                 transition-colors duration-150">
+                                 transition-colors duration-150"
+                    >
                       <td className="px-4 py-density-high">
                         <span className="text-body-sm font-medium text-on-surface line-clamp-1">
                           {session.title}
@@ -494,7 +915,7 @@ export default function AdminExpoDetail() {
                           {session.status}
                         </span>
                       </td>
-                    </tr>
+                    </motion.tr>
                   ))
                 )}
               </tbody>
@@ -509,11 +930,16 @@ export default function AdminExpoDetail() {
               </Link>
             </p>
           )}
-        </div>
+        </motion.div>
 
         {/* ── Floor plan config ────────────────────────────────────── */}
         {expo?.floorPlanConfig && (
-          <div className="card">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="card"
+          >
             <h2 className="text-headline-sm font-semibold text-on-surface mb-4">
               Floor Plan Configuration
             </h2>
@@ -530,7 +956,7 @@ export default function AdminExpoDetail() {
                 </div>
               ))}
             </div>
-          </div>
+          </motion.div>
         )}
       </div>
 
@@ -553,7 +979,7 @@ export default function AdminExpoDetail() {
         {modal === 'cancel' && (
           <ConfirmModal
             title="Cancel expo?"
-            body={`"${expo?.title}" will be cancelled. This cannot be undone. All pending booth reservations will need to be released manually.`}
+            body={`"${expo?.title}" will be cancelled. This cannot be undone.`}
             icon={XCircle}
             iconBg="bg-warning-container"
             iconFg="text-on-warning-container"

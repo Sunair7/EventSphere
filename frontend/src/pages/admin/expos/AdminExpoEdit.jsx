@@ -1,4 +1,4 @@
-import { useState, useEffect }             from 'react';
+import { useState, useEffect, useRef }             from 'react';
 import { useParams, useNavigate, Link }    from 'react-router-dom';
 import { useForm, Controller }             from 'react-hook-form';
 import { zodResolver }                     from '@hookform/resolvers/zod';
@@ -8,7 +8,7 @@ import { motion }                          from 'framer-motion';
 import {
   ArrowLeft, Save, CalendarDays,
   MapPin, Info, Tag, X, Plus,
-  AlertCircle,
+  AlertCircle, Image, Upload, Loader2, Trash2,
 } from 'lucide-react';
 import toast                               from 'react-hot-toast';
 import api                                 from '@/utils/api';
@@ -159,12 +159,170 @@ function TagInput({ value = [], onChange }) {
   );
 }
 
+// ─── Banner Upload Component ──────────────────────────────────────────────────
+function BannerUpload({ expoId, currentBanner, onBannerChange }) {
+  const [uploading, setUploading] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const fileRef = useRef(null);
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Image must be under 10MB.');
+      return;
+    }
+
+    // Show local preview immediately
+    const localPreview = URL.createObjectURL(file);
+    setPreview(localPreview);
+    
+    // Upload to Cloudinary
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('banner', file);
+      
+      const { data } = await api.post(`/expos/${expoId}/banner`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      
+      toast.success('Banner uploaded successfully!');
+      onBannerChange?.(data.data.banner);
+    } catch (err) {
+      toast.error(err.message || 'Failed to upload banner.');
+      setPreview(null);
+      URL.revokeObjectURL(localPreview);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const handleRemove = async () => {
+    try {
+      await api.delete(`/expos/${expoId}/banner`);
+      toast.success('Banner removed.');
+      setPreview(null);
+      onBannerChange?.(null);
+    } catch (err) {
+      toast.error(err.message || 'Failed to remove banner.');
+    }
+  };
+
+  const displayUrl = preview || currentBanner?.url;
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Banner preview or upload area */}
+      {displayUrl ? (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="relative group rounded-lg overflow-hidden border border-outline-variant aspect-video bg-surface-container-low"
+        >
+          <img
+            src={displayUrl}
+            alt={currentBanner?.altText || 'Expo banner'}
+            className="w-full h-full object-cover"
+          />
+          
+          {/* Overlay on hover */}
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="btn-ghost btn-sm gap-1.5 bg-white/20 text-white hover:bg-white/30"
+            >
+              <Upload size={14} /> Change
+            </button>
+            <button
+              type="button"
+              onClick={handleRemove}
+              className="btn-ghost btn-sm gap-1.5 bg-white/20 text-white hover:bg-error/60"
+            >
+              <Trash2 size={14} /> Remove
+            </button>
+          </div>
+        </motion.div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          onClick={() => fileRef.current?.click()}
+          className={cn(
+            'flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed aspect-video',
+            'cursor-pointer transition-all duration-200',
+            uploading
+              ? 'border-secondary/50 bg-secondary/5'
+              : 'border-outline-variant hover:border-secondary/50 hover:bg-surface-container-low'
+          )}
+        >
+          {uploading ? (
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 size={24} className="animate-spin-slow text-secondary" />
+              <span className="font-mono text-label-sm text-on-surface-variant">Uploading…</span>
+            </div>
+          ) : (
+            <>
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
+                <Image size={18} />
+              </div>
+              <div className="text-center">
+                <p className="text-body-sm font-medium text-on-surface">Upload banner image</p>
+                <p className="font-mono text-label-sm text-on-surface-variant mt-0.5">
+                  Click to browse · 1200×630 recommended · Max 10MB
+                </p>
+              </div>
+            </>
+          )}
+        </motion.div>
+      )}
+
+      {/* Alt text field */}
+      <Field label="Alt Text" htmlFor="bannerAlt" hint="Describe the banner image for accessibility and SEO.">
+        <input
+          id="bannerAlt"
+          type="text"
+          placeholder="e.g. TechConnect 2026 venue exterior"
+          defaultValue={currentBanner?.altText || ''}
+          onChange={(e) => {
+            // Update alt text in parent via the banner change handler
+            if (currentBanner?.url || preview) {
+              onBannerChange?.({
+                url: currentBanner?.url || preview,
+                altText: e.target.value,
+              });
+            }
+          }}
+          className="input"
+        />
+      </Field>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/avif,image/gif"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function AdminExpoEdit() {
   const { id }          = useParams();
   const navigate        = useNavigate();
   const queryClient     = useQueryClient();
   const [tags, setTags] = useState([]);
+  const [bannerData, setBannerData] = useState(null); // Track uploaded banner
 
   // ── Fetch existing expo ─────────────────────────────────────────────────────
   const { data: expo, isLoading, isError } = useQuery({
@@ -181,6 +339,7 @@ export default function AdminExpoEdit() {
     handleSubmit,
     control,
     reset,
+    setValue,
     formState: { errors, isSubmitting, isDirty },
   } = useForm({ resolver: zodResolver(editExpoSchema) });
 
@@ -188,6 +347,7 @@ export default function AdminExpoEdit() {
   useEffect(() => {
     if (!expo) return;
     setTags(expo.tags || []);
+    setBannerData(expo.banner || null);
     reset({
       title:               expo.title               || '',
       description:         expo.description         || '',
@@ -207,6 +367,19 @@ export default function AdminExpoEdit() {
       'banner.altText':   expo.banner?.altText   || '',
     });
   }, [expo, reset]);
+
+  // ── Handle banner change ────────────────────────────────────────────────────
+  const handleBannerChange = (newBanner) => {
+    if (newBanner) {
+      setBannerData(newBanner);
+      setValue('banner.url', newBanner.url || '', { shouldDirty: true });
+      setValue('banner.altText', newBanner.altText || '', { shouldDirty: true });
+    } else {
+      setBannerData(null);
+      setValue('banner.url', '', { shouldDirty: true });
+      setValue('banner.altText', '', { shouldDirty: true });
+    }
+  };
 
   // ── Update mutation ─────────────────────────────────────────────────────────
   const updateMutation = useMutation({
@@ -230,10 +403,7 @@ export default function AdminExpoEdit() {
         tags,
         maxAttendees: values.maxAttendees || null,
         isPublic:     values.isPublic,
-        banner: {
-          url:     values['banner.url']     || null,
-          altText: values['banner.altText'] || null,
-        },
+        banner:       bannerData || null, // Use the tracked banner data
       };
       const { data } = await api.put(`/expos/${id}`, payload);
       return data.data.expo;
@@ -260,19 +430,33 @@ export default function AdminExpoEdit() {
 
   if (isError || !expo) {
     return (
-      <div className="empty-state py-20">
-        <div className="empty-state-icon text-error"><AlertCircle size={28} /></div>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="empty-state py-20"
+      >
+        <motion.div
+          animate={{ rotate: [0, 10, -10, 0] }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+          className="empty-state-icon text-error"
+        >
+          <AlertCircle size={28} />
+        </motion.div>
         <h3 className="empty-state-title">Expo not found</h3>
         <Link to="/admin/expos" className="btn-ghost btn-sm mt-3 gap-1.5">
           <ArrowLeft size={14} /> Back to expos
         </Link>
-      </div>
+      </motion.div>
     );
   }
 
   if (['completed', 'cancelled'].includes(expo.status)) {
     return (
-      <div className="empty-state py-20">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="empty-state py-20"
+      >
         <div className="empty-state-icon text-warning"><AlertCircle size={28} /></div>
         <h3 className="empty-state-title">Cannot edit this expo</h3>
         <p className="empty-state-body">
@@ -281,28 +465,46 @@ export default function AdminExpoEdit() {
         <Link to={`/admin/expos/${id}`} className="btn-ghost btn-sm mt-3 gap-1.5">
           <ArrowLeft size={14} /> View Expo
         </Link>
-      </div>
+      </motion.div>
     );
   }
+
+  const isPending = isSubmitting || updateMutation.isPending;
 
   return (
     <div className="mx-auto max-w-3xl">
       {/* ── Back + header ────────────────────────────────────────── */}
-      <div className="mb-4 flex items-center gap-3">
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-4 flex items-center gap-3"
+      >
         <Link to={`/admin/expos/${id}`} className="btn-ghost btn-sm gap-1.5">
           <ArrowLeft size={15} /> Detail
         </Link>
-      </div>
+      </motion.div>
 
-      <div className="mb-8">
-        <h1 className="page-title">Edit Expo</h1>
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="mb-8"
+      >
+        <h1 className="page-title flex items-center gap-2">
+          Edit Expo
+        </h1>
         <p className="page-subtitle">
           Editing: <span className="font-semibold text-on-surface">{expo.title}</span>
         </p>
-      </div>
+      </motion.div>
 
       {/* Floor plan lock notice */}
-      <div className="mb-6 flex items-start gap-2 rounded-md bg-primary-container px-4 py-3">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="mb-6 flex items-start gap-2 rounded-md bg-primary-container px-4 py-3"
+      >
         <Info size={15} className="shrink-0 mt-0.5 text-on-primary-container" />
         <p className="text-body-sm text-on-primary-container">
           Floor plan configuration cannot be changed after booths have been generated.
@@ -312,7 +514,7 @@ export default function AdminExpoEdit() {
           </Link>{' '}
           page to manage individual booths.
         </p>
-      </div>
+      </motion.div>
 
       <form
         onSubmit={handleSubmit((v) => updateMutation.mutate(v))}
@@ -323,7 +525,7 @@ export default function AdminExpoEdit() {
         <Section icon={CalendarDays} title="Event Details">
           <Field label="Title" required htmlFor="title" error={errors.title?.message}>
             <input id="title" type="text" {...register('title')}
-              className={cn('input', errors.title && 'input-error')} />
+              className={cn('input', errors.title && 'input-error')} autoFocus />
           </Field>
 
           <Field label="Description" required htmlFor="description" error={errors.description?.message}>
@@ -412,20 +614,22 @@ export default function AdminExpoEdit() {
         </Section>
 
         {/* ── Banner ────────────────────────────────────────────────── */}
-        <Section icon={Tag} title="Banner Image" description="Optional hero image displayed on the expo listing.">
-          <Field label="Banner URL" htmlFor="bannerUrl" error={errors['banner.url']?.message}>
-            <input id="bannerUrl" type="url" placeholder="https://…"
-              {...register('banner.url')} className={cn('input', errors['banner.url'] && 'input-error')} />
-          </Field>
-          <Field label="Alt Text" htmlFor="bannerAlt" error={errors['banner.altText']?.message}>
-            <input id="bannerAlt" type="text" placeholder="Describe the banner image for accessibility"
-              {...register('banner.altText')} className="input" />
-          </Field>
+        <Section icon={Image} title="Banner Image" description="Upload a hero image displayed on the expo listing page.">
+          <BannerUpload
+            expoId={id}
+            currentBanner={bannerData}
+            onBannerChange={handleBannerChange}
+          />
         </Section>
 
         {/* ── Submit bar ──────────────────────────────────────────── */}
-        <div className="flex items-center justify-between rounded-md border border-outline-variant
-                        bg-surface-bright px-6 py-4 shadow-level-2 sticky bottom-4">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="flex items-center justify-between rounded-md border border-outline-variant
+                      bg-surface-bright px-6 py-4 shadow-level-2 sticky bottom-4"
+        >
           <p className="hidden text-body-sm text-on-surface-variant sm:block">
             {isDirty ? 'You have unsaved changes.' : 'No changes to save.'}
           </p>
@@ -433,12 +637,14 @@ export default function AdminExpoEdit() {
             <Link to={`/admin/expos/${id}`} className="btn-ghost">
               Discard
             </Link>
-            <button
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               type="submit"
-              disabled={(!isDirty) || isSubmitting || updateMutation.isPending}
+              disabled={(!isDirty && !bannerData !== !expo?.banner) || isPending}
               className="btn-secondary gap-2"
             >
-              {updateMutation.isPending ? (
+              {isPending ? (
                 <>
                   <motion.span
                     animate={{ rotate: 360 }}
@@ -451,9 +657,9 @@ export default function AdminExpoEdit() {
               ) : (
                 <><Save size={15} /> Save Changes</>
               )}
-            </button>
+            </motion.button>
           </div>
-        </div>
+        </motion.div>
       </form>
     </div>
   );

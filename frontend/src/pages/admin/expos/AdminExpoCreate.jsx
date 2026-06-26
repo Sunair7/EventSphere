@@ -7,11 +7,12 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion }                   from 'framer-motion';
 import {
   ArrowLeft, Plus, X, LayoutGrid,
-  CalendarDays, MapPin, Info, Save,
+  CalendarDays, MapPin, Info, Save, Image
 } from 'lucide-react';
 import toast                        from 'react-hot-toast';
 import api                          from '@/utils/api';
 import { cn }                       from '@/utils/cn';
+import ImageUpload                  from '@/components/ui/ImageUpload';
 
 // ─── Validation schema ────────────────────────────────────────────────────────
 const createExpoSchema = z
@@ -132,7 +133,7 @@ function FloorPlanPreview({ rows, cols }) {
             <div
               key={i}
               className="h-4 w-4 rounded-sm border border-outline-variant bg-surface-container-low
-                         hover:bg-secondary-container/50 transition-colors duration-100"
+                          hover:bg-secondary-container/50 transition-colors duration-100"
               title={`Row ${Math.floor(i / cols)}, Col ${i % cols}`}
             />
           ))}
@@ -255,9 +256,10 @@ function Field({ label, required, error, hint, children, htmlFor }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function AdminExpoCreate() {
-  const navigate     = useNavigate();
-  const queryClient  = useQueryClient();
+  const navigate  = useNavigate();
+  const queryClient = useQueryClient();
   const [tags, setTags] = useState([]);
+  const [bannerFile, setBannerFile] = useState(null);
 
   const {
     register,
@@ -302,7 +304,7 @@ export default function AdminExpoCreate() {
     onSuccess: (expo) => {
       toast.success(`"${expo.title}" created successfully.`);
       queryClient.invalidateQueries({ queryKey: ['expos'] });
-      navigate(`/admin/expos/${expo._id}`);
+      // Removed navigation from here so we can upload the banner first in onSubmit
     },
     onError: (err) => {
       toast.error(err.message || 'Failed to create expo. Please try again.');
@@ -338,7 +340,25 @@ export default function AdminExpoCreate() {
       isPublic:     values.isPublic,
     };
 
-    await createMutation.mutateAsync(payload);
+    try {
+      const expo = await createMutation.mutateAsync(payload);
+      
+      // Upload banner if selected
+      if (bannerFile) {
+        const formData = new FormData();
+        formData.append('banner', bannerFile);
+        formData.append('altText', values.title);
+        
+        await api.post(`/expos/${expo._id}/banner`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
+      
+      navigate(`/admin/expos/${expo._id}`);
+    } catch (error) {
+      // Error handling is managed by createMutation's onError, 
+      // but you could add banner-specific fallback logic here if needed.
+    }
   };
 
   return (
@@ -601,6 +621,18 @@ export default function AdminExpoCreate() {
           <FloorPlanPreview
             rows={watchedRows}
             cols={watchedCols}
+          />
+        </FormSection>
+
+        {/* ── Section 4: Banner Image ────────────────────────────── */}
+        <FormSection
+          title="Banner Image"
+          description="Upload a banner image for the expo listing page."
+          icon={Image}
+        >
+          <ImageUpload
+            onUpload={(files) => setBannerFile(files[0])}
+            multiple={false}
           />
         </FormSection>
 

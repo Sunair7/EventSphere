@@ -1,10 +1,11 @@
 import axios from 'axios';
 import { getAccessToken, setAccessToken, clearAccessToken } from '@/context/AuthContext';
+import toast from 'react-hot-toast'; // Add this import
 
 // ─── Base Instance ────────────────────────────────────────────────────────────
 const api = axios.create({
   baseURL:         '/api/v1',
-  withCredentials: true,          // Send HttpOnly refresh cookie on every request
+  withCredentials: true,
   timeout:         15_000,
   headers: {
     'Content-Type': 'application/json',
@@ -43,13 +44,73 @@ const processPendingQueue = (error, token = null) => {
   pendingRequestsQueue = [];
 };
 
-// ─── Response Interceptor — handle 401 with silent refresh ───────────────────
+// ─── Helper: Parse rate limit response ──────────────────────────────────────
+const parseRateLimitError = (error) => {
+  const status = error.response?.status;
+  if (status !== 429) return null;
+
+  const headers = error.response?.headers || {};
+  const retryAfter = headers['retry-after'] || headers['Retry-After'] || null;
+  const resetTime = headers['x-ratelimit-reset'] || headers['X-RateLimit-Reset'] || null;
+  const limit = headers['x-ratelimit-limit'] || headers['X-RateLimit-Limit'] || null;
+  const remaining = headers['x-ratelimit-remaining'] || headers['X-RateLimit-Remaining'] || null;
+
+  // Parse retry-after (can be seconds or HTTP date)
+  let waitSeconds = null;
+  if (retryAfter) {
+    if (!isNaN(retryAfter)) {
+      waitSeconds = parseInt(retryAfter, 10);
+    } else {
+      // If it's a date string, calculate seconds until that date
+      try {
+        const resetDate = new Date(retryAfter);
+        if (!isNaN(resetDate.getTime())) {
+          waitSeconds = Math.ceil((resetDate.getTime() - Date.now()) / 1000);
+        }
+      } catch {
+        // Ignore
+      }
+    }
+  } else if (resetTime) {
+    // Some APIs send Unix timestamp instead of retry-after
+    const resetMs = parseInt(resetTime, 10) * 1000;
+    if (!isNaN(resetMs)) {
+      waitSeconds = Math.ceil((resetMs - Date.now()) / 1000);
+    }
+  }
+
+  return {
+    statusCode: 429,
+    message: error.response?.data?.message || 'Too many requests. Please try again later.',
+    waitSeconds: waitSeconds > 0 ? waitSeconds : null,
+    limit: limit ? parseInt(limit, 10) : null,
+    remaining: remaining ? parseInt(remaining, 10) : null,
+    original: error,
+  };
+};
+
+// ─── Response Interceptor ─────────────────────────────────────────────────────
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // Only attempt silent refresh on 401 responses that haven't been retried
+    // ── Rate limit handling (429) ──────────────────────────────────────────
+    if (error.response?.status === 429) {
+      const rateLimitInfo = parseRateLimitError(error);
+      if (rateLimitInfo) {
+        // Create a custom error with rate limit info
+        const enhancedError = {
+          ...error,
+          isRateLimit: true,
+          rateLimitInfo,
+          message: rateLimitInfo.message,
+        };
+        return Promise.reject(enhancedError);
+      }
+    }
+
+    // ── Silent refresh on 401 ──────────────────────────────────────────────
     if (
       error.response?.status === 401 &&
       !originalRequest._retried &&
@@ -69,7 +130,6 @@ api.interceptors.response.use(
       isRefreshingToken         = true;
 
       try {
-        // ✅ FIX: Use the isolated instance to eliminate interceptor collision
         const { data } = await authRefreshInstance.post('/auth/refresh-token');
         const newToken = data.data.accessToken;
 
@@ -95,6 +155,8 @@ api.interceptors.response.use(
       message:    error.response?.data?.message || 'An unexpected error occurred.',
       errors:     error.response?.data?.errors  || [],
       statusCode: error.response?.status        || 0,
+      isRateLimit: error.isRateLimit || false,
+      rateLimitInfo: error.rateLimitInfo || null,
       original:   error,
     };
 

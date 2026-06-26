@@ -1,31 +1,80 @@
-import { useRef }                   from 'react';
-import { Link }                     from 'react-router-dom';
-import { useQuery }                 from '@tanstack/react-query';
-import { motion, useInView }        from 'framer-motion';
+import { useRef, useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { motion, useInView, useMotionValue, useSpring, animate, useTransform } from 'framer-motion';
 import {
   CalendarDays, LayoutGrid, Users, MessageSquare,
   BarChart3, ShieldCheck, ArrowRight, Building2,
   Ticket, MapPin, BookOpen, Zap, Globe,
-  CheckCircle2,
+  CheckCircle2, Star, Sparkles,
 } from 'lucide-react';
-import { format }                   from 'date-fns';
-import api                          from '@/utils/api';
-import { cn }                       from '@/utils/cn';
+import { format } from 'date-fns';
+import api from '@/utils/api';
+import { cn } from '@/utils/cn';
+
+// ─── Animated Counter Hook ────────────────────────────────────────────────────
+function useAnimatedCounter(end, duration = 2, start = 0) {
+  const count = useMotionValue(start);
+  const rounded = useTransform(count, latest => Math.round(latest));
+  const [display, setDisplay] = useState(start);
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true });
+
+  useEffect(() => {
+    if (inView) {
+      const controls = animate(count, end, { 
+        duration, 
+        ease: [0.25, 0.46, 0.45, 0.94] 
+      });
+      return controls.stop;
+    }
+  }, [inView, end, duration, count]);
+
+  useEffect(() => {
+    const unsubscribe = rounded.onChange(v => setDisplay(v));
+    return unsubscribe;
+  }, [rounded]);
+
+  return { ref, display };
+}
+
+// ─── Mouse Parallax Hook ──────────────────────────────────────────────────────
+function useMouseParallax(strength = 20) {
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  
+  const springX = useSpring(x, { stiffness: 100, damping: 30 });
+  const springY = useSpring(y, { stiffness: 100, damping: 30 });
+
+  const handleMouseMove = useCallback((e) => {
+    const { clientX, clientY } = e;
+    const { innerWidth, innerHeight } = window;
+    x.set((clientX / innerWidth - 0.5) * strength);
+    y.set((clientY / innerHeight - 0.5) * strength);
+  }, [x, y, strength]);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, [handleMouseMove]);
+
+  return { x: springX, y: springY };
+}
 
 // ─── Animation helpers ────────────────────────────────────────────────────────
 const fadeUp = {
-  hidden:  { opacity: 0, y: 20 },
+  hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.4, 0, 0.2, 1] } },
 };
 
 const stagger = (delayChildren = 0.1) => ({
-  hidden:  {},
+  hidden: {},
   visible: { transition: { staggerChildren: delayChildren } },
 });
 
 function AnimatedSection({ children, className, delay = 0 }) {
-  const ref     = useRef(null);
-  const inView  = useInView(ref, { once: true, margin: '-80px' });
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, margin: '-80px' });
 
   return (
     <motion.div
@@ -41,19 +90,145 @@ function AnimatedSection({ children, className, delay = 0 }) {
   );
 }
 
+// ─── Animated Gradient Orbs ───────────────────────────────────────────────────
+function GradientOrbs() {
+  const { x, y } = useMouseParallax(30);
+
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+      {/* Orb 1 - Teal */}
+      <motion.div
+        className="absolute top-1/4 left-1/4 w-72 h-72 rounded-full blur-3xl"
+        style={{
+          background: 'radial-gradient(circle, rgba(0,106,97,0.3) 0%, transparent 70%)',
+          x, y,
+        }}
+        animate={{
+          scale: [1, 1.2, 1],
+          opacity: [0.3, 0.5, 0.3],
+        }}
+        transition={{
+          duration: 8,
+          repeat: Infinity,
+          ease: 'easeInOut',
+        }}
+      />
+      
+      {/* Orb 2 - Blue */}
+      <motion.div
+        className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full blur-3xl"
+        style={{
+          background: 'radial-gradient(circle, rgba(57,128,244,0.2) 0%, transparent 70%)',
+          x: useTransform(x, v => v * -0.5),
+          y: useTransform(y, v => v * -0.5),
+        }}
+        animate={{
+          scale: [1.2, 1, 1.2],
+          opacity: [0.2, 0.4, 0.2],
+        }}
+        transition={{
+          duration: 10,
+          repeat: Infinity,
+          ease: 'easeInOut',
+          delay: 1,
+        }}
+      />
+      
+      {/* Orb 3 - Purple accent */}
+      <motion.div
+        className="absolute top-1/2 left-1/2 w-64 h-64 rounded-full blur-3xl"
+        style={{
+          background: 'radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%)',
+          x: useTransform(x, v => v * 0.3),
+          y: useTransform(y, v => v * -0.7),
+        }}
+        animate={{
+          scale: [1, 1.3, 1],
+          opacity: [0.15, 0.3, 0.15],
+        }}
+        transition={{
+          duration: 12,
+          repeat: Infinity,
+          ease: 'easeInOut',
+          delay: 2,
+        }}
+      />
+    </div>
+  );
+}
+
+// ─── Floating UI Mockup ───────────────────────────────────────────────────────
+function FloatingDashboardMock() {
+  const { x, y } = useMouseParallax(10);
+
+  return (
+    <motion.div
+      className="absolute right-0 top-1/2 -translate-y-1/2 hidden lg:block"
+      style={{ x, y }}
+      initial={{ opacity: 0, x: 50 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: 0.5, duration: 0.8 }}
+    >
+      {/* Mini dashboard card */}
+      <div className="relative w-72 rounded-xl border border-white/10 bg-white/5 backdrop-blur-xl p-4 shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center gap-2 mb-3">
+          <div className="h-6 w-6 rounded bg-secondary/30" />
+          <div className="h-3 w-24 rounded bg-white/20" />
+        </div>
+        
+        {/* Stat cards */}
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="rounded-lg bg-white/5 p-2">
+            <div className="h-2 w-12 rounded bg-white/10 mb-1" />
+            <div className="h-4 w-8 rounded bg-secondary/50" />
+          </div>
+          <div className="rounded-lg bg-white/5 p-2">
+            <div className="h-2 w-12 rounded bg-white/10 mb-1" />
+            <div className="h-4 w-8 rounded bg-tertiary/50" />
+          </div>
+        </div>
+        
+        {/* Chart placeholder */}
+        <div className="space-y-1.5">
+          <div className="h-2 w-full rounded bg-white/10" />
+          <div className="h-2 w-3/4 rounded bg-secondary/40" />
+          <div className="h-2 w-1/2 rounded bg-white/10" />
+        </div>
+        
+        {/* Floating sparkle */}
+        <motion.div
+          className="absolute -top-3 -right-3"
+          animate={{
+            scale: [1, 1.2, 1],
+            rotate: [0, 180, 360],
+          }}
+          transition={{ duration: 4, repeat: Infinity }}
+        >
+          <Sparkles size={24} className="text-secondary" />
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+}
+
 // ─── Feature card ─────────────────────────────────────────────────────────────
 function FeatureCard({ icon: Icon, title, description, color }) {
   return (
     <motion.div
       variants={fadeUp}
+      whileHover={{ y: -4, transition: { duration: 0.2 } }}
       className="card flex flex-col gap-3 hover:shadow-level-2 transition-shadow duration-200"
     >
-      <div className={cn(
-        'flex h-10 w-10 items-center justify-center rounded',
-        color
-      )}>
+      <motion.div
+        className={cn(
+          'flex h-10 w-10 items-center justify-center rounded',
+          color
+        )}
+        whileHover={{ rotate: [0, -10, 10, 0], transition: { duration: 0.3 } }}
+      >
         <Icon size={19} />
-      </div>
+      </motion.div>
       <h3 className="text-headline-sm font-semibold text-on-surface">{title}</h3>
       <p className="text-body-sm text-on-surface-variant leading-relaxed">{description}</p>
     </motion.div>
@@ -66,6 +241,7 @@ function ExpoPreviewCard({ expo, index }) {
     <motion.div
       variants={fadeUp}
       transition={{ delay: index * 0.07 }}
+      whileHover={{ y: -4, transition: { duration: 0.2 } }}
       className="card flex flex-col gap-3 hover:shadow-level-2 transition-shadow duration-200 group"
     >
       <div className="flex items-start justify-between gap-2">
@@ -73,7 +249,18 @@ function ExpoPreviewCard({ expo, index }) {
           'badge',
           expo.status === 'ongoing' ? 'badge-success' : 'badge-info'
         )}>
-          {expo.status === 'ongoing' ? '🔴 Live Now' : format(new Date(expo.startDate), 'MMM d, yyyy')}
+          {expo.status === 'ongoing' ? (
+            <span className="flex items-center gap-1">
+              <motion.span
+                className="h-1.5 w-1.5 rounded-full bg-success"
+                animate={{ opacity: [1, 0.3, 1] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+              />
+              Live Now
+            </span>
+          ) : (
+            format(new Date(expo.startDate), 'MMM d, yyyy')
+          )}
         </span>
         {expo.theme && (
           <span className="font-mono text-label-sm text-on-surface-variant line-clamp-1">
@@ -119,6 +306,7 @@ function RoleCard({ icon: Icon, role, title, description, features, cta, to, acc
   return (
     <motion.div
       variants={fadeUp}
+      whileHover={{ y: -6, transition: { duration: 0.2 } }}
       className={cn(
         'card flex flex-col gap-4 border-2 hover:shadow-level-2 transition-all duration-200',
         accent
@@ -154,48 +342,70 @@ function RoleCard({ icon: Icon, role, title, description, features, cta, to, acc
   );
 }
 
-// ─── Stats bar ────────────────────────────────────────────────────────────────
+// ─── Animated Stat Counter ────────────────────────────────────────────────────
+function StatCounter({ value, suffix = '', label }) {
+  const { ref, display } = useAnimatedCounter(value, 2);
+
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="flex flex-col items-center gap-1 text-center"
+    >
+      <span className="font-mono text-headline-md font-bold text-secondary">
+        {display}{suffix}
+      </span>
+      <span className="font-mono text-label-sm text-on-surface-variant">
+        {label}
+      </span>
+    </motion.div>
+  );
+}
+
+// ─── Stats config ─────────────────────────────────────────────────────────────
 const STATS = [
-  { value: '10,000+', label: 'Attendees managed'  },
-  { value: '500+',    label: 'Expos hosted'        },
-  { value: '98%',     label: 'Uptime SLA'          },
-  { value: '< 1s',    label: 'Real-time sync'      },
+  { value: 10000, suffix: '+', label: 'Attendees managed' },
+  { value: 500, suffix: '+', label: 'Expos hosted' },
+  { value: 98, suffix: '%', label: 'Uptime SLA' },
+  { value: 24, suffix: '/7', label: 'Real-time sync' },
 ];
 
 // ─── Features config ──────────────────────────────────────────────────────────
 const FEATURES = [
   {
-    icon:  LayoutGrid,
+    icon: LayoutGrid,
     title: 'Interactive Floor Plans',
     description: 'Drag-and-drop booth management with live availability updates. Exhibitors browse and reserve spaces in real time.',
     color: 'bg-secondary-container text-on-secondary-container',
   },
   {
-    icon:  Zap,
+    icon: Zap,
     title: 'Real-Time Synchronisation',
     description: 'Socket.io powered live updates across all connected clients. Booth state changes propagate instantly to every viewer.',
     color: 'bg-tertiary-container text-on-tertiary-container',
   },
   {
-    icon:  CalendarDays,
+    icon: CalendarDays,
     title: 'Schedule Engine',
     description: 'Build complex multi-room event schedules with conflict detection, attendee registration, and live session status.',
     color: 'bg-primary-container text-on-primary-container',
   },
   {
-    icon:  MessageSquare,
+    icon: MessageSquare,
     title: 'Integrated Messaging',
     description: 'Direct messaging between organisers, exhibitors, and attendees with typing indicators and read receipts.',
     color: 'bg-success-container text-on-success-container',
   },
   {
-    icon:  ShieldCheck,
+    icon: ShieldCheck,
     title: 'Application Workflow',
     description: 'Multi-stage exhibitor verification with document review, approval pipeline, and automated status notifications.',
     color: 'bg-warning-container text-on-warning-container',
   },
   {
-    icon:  BarChart3,
+    icon: BarChart3,
     title: 'Analytics Dashboard',
     description: 'Comprehensive reporting on booth utilisation, session engagement, and attendee growth — exportable on demand.',
     color: 'bg-error-container text-on-error-container',
@@ -204,8 +414,8 @@ const FEATURES = [
 
 const ROLES = [
   {
-    icon:  ShieldCheck,
-    role:  'Organiser',
+    icon: ShieldCheck,
+    role: 'Organiser',
     title: 'Command & Control',
     description: 'The complete operational overview for event administrators.',
     features: [
@@ -215,13 +425,13 @@ const ROLES = [
       'Monitor real-time analytics',
       'Moderate messaging and content',
     ],
-    cta:    'Access Admin Portal',
-    to:     '/login',
+    cta: 'Access Admin Portal',
+    to: '/login',
     accent: 'border-primary/20',
   },
   {
-    icon:  Building2,
-    role:  'Exhibitor',
+    icon: Building2,
+    role: 'Exhibitor',
     title: 'Showcase Your Brand',
     description: 'Everything you need to present at world-class events.',
     features: [
@@ -231,13 +441,13 @@ const ROLES = [
       'Message organisers directly',
       'Track application status in real time',
     ],
-    cta:    'Register as Exhibitor',
-    to:     '/register',
+    cta: 'Register as Exhibitor',
+    to: '/register',
     accent: 'border-secondary/30',
   },
   {
-    icon:  Ticket,
-    role:  'Attendee',
+    icon: Ticket,
+    role: 'Attendee',
     title: 'Discover & Engage',
     description: 'The complete attendee experience for event discovery.',
     features: [
@@ -247,8 +457,8 @@ const ROLES = [
       'Bookmark sessions for your schedule',
       'Connect with exhibiting companies',
     ],
-    cta:    'Register as Attendee',
-    to:     '/register',
+    cta: 'Register as Attendee',
+    to: '/register',
     accent: 'border-tertiary/30',
   },
 ];
@@ -257,7 +467,7 @@ const ROLES = [
 export default function LandingPage() {
   const { data: expos = [], isLoading: expoLoading } = useQuery({
     queryKey: ['expos', 'upcoming', 'landing'],
-    queryFn:  async () => {
+    queryFn: async () => {
       const { data } = await api.get('/expos/upcoming?limit=3');
       return data.data.expos;
     },
@@ -266,12 +476,14 @@ export default function LandingPage() {
 
   return (
     <div className="flex flex-col">
-
       {/* ── Hero ──────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden bg-primary py-24 lg:py-32">
-        {/* Background grid pattern */}
+      <section className="relative overflow-hidden bg-primary py-24 lg:py-32 min-h-[90vh] flex items-center">
+        {/* Animated gradient orbs */}
+        <GradientOrbs />
+        
+        {/* Grid pattern overlay */}
         <div
-          className="pointer-events-none absolute inset-0 opacity-5"
+          className="pointer-events-none absolute inset-0 opacity-[0.03]"
           style={{
             backgroundImage: 'linear-gradient(#ffffff 1px, transparent 1px), linear-gradient(90deg, #ffffff 1px, transparent 1px)',
             backgroundSize: '48px 48px',
@@ -279,30 +491,47 @@ export default function LandingPage() {
           aria-hidden="true"
         />
 
-        <div className="relative mx-auto max-w-container px-container-pad">
+        {/* Floating dashboard mockup */}
+        <FloatingDashboardMock />
+
+        <div className="relative mx-auto max-w-container px-container-pad w-full">
           <motion.div
             initial="hidden"
             animate="visible"
             variants={stagger(0.1)}
-            className="mx-auto max-w-3xl text-center"
+            className="mx-auto max-w-3xl text-center lg:text-left lg:mx-0"
           >
-            {/* Badge */}
-            <motion.div variants={fadeUp} className="mb-6 flex justify-center">
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/20
-                               bg-white/10 px-4 py-1.5 font-mono text-label-md text-inverse-on-surface">
-                <Globe size={13} />
+            {/* Badge with glow */}
+            <motion.div variants={fadeUp} className="mb-6 flex justify-center lg:justify-start">
+              <motion.span
+                className="inline-flex items-center gap-2 rounded-full border border-white/20
+                           bg-white/10 px-4 py-1.5 font-mono text-label-md text-inverse-on-surface"
+                animate={{ boxShadow: ['0 0 0 0 rgba(0,106,97,0)', '0 0 20px 5px rgba(0,106,97,0.1)', '0 0 0 0 rgba(0,106,97,0)'] }}
+                transition={{ duration: 3, repeat: Infinity }}
+              >
+                <Star size={14} className="text-secondary" fill="currentColor" />
                 Enterprise Event Logistics Platform
-              </span>
+              </motion.span>
             </motion.div>
 
-            {/* Headline */}
+            {/* Headline with gradient text */}
             <motion.h1
               variants={fadeUp}
-              className="font-sans text-display-lg font-bold leading-tight
+              className="font-sans text-display-lg lg:text-display-xl font-bold leading-tight
                          text-inverse-on-surface"
             >
               Manage Events at{' '}
-              <span className="text-secondary">Enterprise Scale</span>
+              <span className="relative inline-block">
+                <span className="relative z-10 bg-gradient-to-r from-secondary via-secondary to-tertiary bg-clip-text text-transparent">
+                  Enterprise Scale
+                </span>
+                <motion.span
+                  className="absolute -bottom-1 left-0 right-0 h-1 rounded-full bg-gradient-to-r from-secondary to-tertiary"
+                  initial={{ scaleX: 0 }}
+                  animate={{ scaleX: 1 }}
+                  transition={{ delay: 0.8, duration: 0.6 }}
+                />
+              </span>
             </motion.h1>
 
             {/* Sub */}
@@ -317,19 +546,29 @@ export default function LandingPage() {
             {/* CTAs */}
             <motion.div
               variants={fadeUp}
-              className="mt-10 flex flex-col items-center gap-3 sm:flex-row sm:justify-center"
+              className="mt-10 flex flex-col items-center gap-3 sm:flex-row lg:justify-start justify-center"
             >
-              <Link to="/register" className="btn-secondary btn-lg gap-2 min-w-[180px]">
-                Get Started Free <ArrowRight size={17} />
-              </Link>
-              <Link
-                to="/login"
-                className="btn-lg gap-2 rounded border border-white/20 bg-white/10
-                           text-inverse-on-surface hover:bg-white/20 transition-colors min-w-[180px]
-                           inline-flex items-center justify-center font-medium"
+              <motion.div
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
               >
-                Sign In
-              </Link>
+                <Link to="/register" className="btn-secondary btn-lg gap-2 min-w-[180px] inline-flex">
+                  Get Started Free <ArrowRight size={17} />
+                </Link>
+              </motion.div>
+              <motion.div
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                <Link
+                  to="/login"
+                  className="btn-lg gap-2 rounded border border-white/20 bg-white/10
+                             text-inverse-on-surface hover:bg-white/20 transition-colors min-w-[180px]
+                             inline-flex items-center justify-center font-medium"
+                >
+                  Sign In
+                </Link>
+              </motion.div>
             </motion.div>
 
             {/* Trust line */}
@@ -341,27 +580,17 @@ export default function LandingPage() {
             </motion.p>
           </motion.div>
         </div>
+
+        {/* Bottom fade gradient */}
+        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-surface-container-low to-transparent pointer-events-none" />
       </section>
 
-      {/* ── Stats bar ─────────────────────────────────────────────── */}
-      <section className="border-b border-outline-variant bg-surface-container-low py-8">
+      {/* ── Stats bar with animated counters ──────────────────────── */}
+      <section className="border-b border-outline-variant bg-surface-container-low py-10">
         <div className="mx-auto max-w-container px-container-pad">
           <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
             {STATS.map((stat, i) => (
-              <motion.div
-                key={stat.label}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 + i * 0.08, duration: 0.3 }}
-                className="flex flex-col items-center gap-1 text-center"
-              >
-                <span className="font-mono text-headline-md font-bold text-secondary">
-                  {stat.value}
-                </span>
-                <span className="font-mono text-label-sm text-on-surface-variant">
-                  {stat.label}
-                </span>
-              </motion.div>
+              <StatCounter key={stat.label} {...stat} />
             ))}
           </div>
         </div>
@@ -455,8 +684,9 @@ export default function LandingPage() {
       </section>
 
       {/* ── Final CTA ─────────────────────────────────────────────── */}
-      <section className="bg-primary py-20">
-        <div className="mx-auto max-w-container px-container-pad text-center">
+      <section className="relative bg-primary py-20 overflow-hidden">
+        <GradientOrbs />
+        <div className="relative mx-auto max-w-container px-container-pad text-center">
           <AnimatedSection>
             <motion.h2
               variants={fadeUp}
@@ -475,17 +705,21 @@ export default function LandingPage() {
               variants={fadeUp}
               className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center"
             >
-              <Link to="/register" className="btn-secondary btn-lg gap-2 min-w-[180px]">
-                Create Free Account <ArrowRight size={17} />
-              </Link>
-              <Link
-                to="/login"
-                className="btn-lg rounded border border-white/20 bg-transparent
-                           text-inverse-on-surface hover:bg-white/10 transition-colors
-                           min-w-[160px] inline-flex items-center justify-center font-medium"
-              >
-                Sign In
-              </Link>
+              <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                <Link to="/register" className="btn-secondary btn-lg gap-2 min-w-[180px] inline-flex">
+                  Create Free Account <ArrowRight size={17} />
+                </Link>
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                <Link
+                  to="/login"
+                  className="btn-lg rounded border border-white/20 bg-transparent
+                             text-inverse-on-surface hover:bg-white/10 transition-colors
+                             min-w-[160px] inline-flex items-center justify-center font-medium"
+                >
+                  Sign In
+                </Link>
+              </motion.div>
             </motion.div>
           </AnimatedSection>
         </div>

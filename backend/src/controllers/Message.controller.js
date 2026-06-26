@@ -67,12 +67,28 @@ const relayToSocket = (req, message) => {
 const getInbox = async (req, res, next) => {
   try {
     const threads = await Message.getInbox(req.user._id);
+    
+    // 🔑 FIX: Ensure each thread has the correct participant info
+    const currentUserId = req.user._id.toString();
+    const fixedThreads = threads.map((thread) => {
+      const isSender = thread.senderId?.toString() === currentUserId;
+      // The participant is the OTHER person in the conversation
+      const participant = isSender ? thread.receiver : thread.sender;
+      
+      return {
+        ...thread,
+        participant, // Add explicit participant field
+        // Ensure sender/receiver are properly set
+        sender: thread.sender || null,
+        receiver: thread.receiver || null,
+      };
+    });
 
     return res.status(200).json({
       success: true,
       data: {
-        threads,
-        total: threads.length,
+        threads: fixedThreads,
+        total: fixedThreads.length,
       },
     });
   } catch (err) {

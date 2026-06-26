@@ -1,4 +1,4 @@
-import { useState, useCallback }               from 'react';
+import { useState, useCallback, useRef }               from 'react';
 import { useForm }                              from 'react-hook-form';
 import { zodResolver }                          from '@hookform/resolvers/zod';
 import { z }                                   from 'zod';
@@ -14,6 +14,8 @@ import {
 import toast                                    from 'react-hot-toast';
 import api                                      from '@/utils/api';
 import { cn }                                   from '@/utils/cn';
+
+import axios from 'axios';  // Add axios import
 
 // ─── Query key ────────────────────────────────────────────────────────────────
 const profileKey = ['exhibitor', 'profile', 'me'];
@@ -202,6 +204,25 @@ export default function ExhibitorProfile() {
   const [showDocForm, setShowDocForm] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [products, setProducts]       = useState([]);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+  const logoInputRef = useRef(null);
+  const bannerInputRef = useRef(null);
+
+  // Cloudinary upload helper
+  const uploadToCloudinary = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', 'eventsphere_chat'); // Same preset as chat
+    formData.append('folder', 'eventsphere/exhibitors');
+
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const { data } = await axios.post(
+      `https://api.cloudinary.com/v1_1/${cloudName}/upload`,
+      formData
+    );
+    return data.secure_url;
+  };
 
   // ── Fetch profile ───────────────────────────────────────────────────────────
   const { data: profile, isLoading } = useQuery({
@@ -399,15 +420,80 @@ export default function ExhibitorProfile() {
             </Field>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Logo URL" htmlFor="logo" error={errors.logo?.message}>
-                <input id="logo" type="url" placeholder="https://…"
-                  {...register('logo')} className={cn('input', errors.logo && 'input-error')} />
-              </Field>
-              <Field label="Banner Image URL" htmlFor="banner" error={errors.bannerImage?.message}>
-                <input id="banner" type="url" placeholder="https://…"
-                  {...register('bannerImage')} className={cn('input', errors.bannerImage && 'input-error')} />
-              </Field>
-            </div>
+  <Field label="Logo" htmlFor="logo" error={errors.logo?.message}>
+    <div className="flex gap-2">
+      <input id="logo" type="url" placeholder="https://…"
+        {...register('logo')} className={cn('input flex-1', errors.logo && 'input-error')} />
+      <button
+        type="button"
+        onClick={() => logoInputRef.current?.click()}
+        disabled={uploadingLogo}
+        className="btn-ghost btn-sm gap-1 shrink-0"
+      >
+        {uploadingLogo ? 'Uploading…' : <><Upload size={14} /> Upload</>}
+      </button>
+      <input
+        ref={logoInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          setUploadingLogo(true);
+          try {
+            const url = await uploadToCloudinary(file);
+            // Set the form value
+            const event = { target: { name: 'logo', value: url } };
+            register('logo').onChange(event);
+            toast.success('Logo uploaded!');
+          } catch (err) {
+            toast.error('Upload failed.');
+          } finally {
+            setUploadingLogo(false);
+            e.target.value = '';
+          }
+        }}
+      />
+    </div>
+  </Field>
+  <Field label="Banner Image" htmlFor="banner" error={errors.bannerImage?.message}>
+    <div className="flex gap-2">
+      <input id="banner" type="url" placeholder="https://…"
+        {...register('bannerImage')} className={cn('input flex-1', errors.bannerImage && 'input-error')} />
+      <button
+        type="button"
+        onClick={() => bannerInputRef.current?.click()}
+        disabled={uploadingBanner}
+        className="btn-ghost btn-sm gap-1 shrink-0"
+      >
+        {uploadingBanner ? 'Uploading…' : <><Upload size={14} /> Upload</>}
+      </button>
+      <input
+        ref={bannerInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          setUploadingBanner(true);
+          try {
+            const url = await uploadToCloudinary(file);
+            const event = { target: { name: 'bannerImage', value: url } };
+            register('bannerImage').onChange(event);
+            toast.success('Banner uploaded!');
+          } catch (err) {
+            toast.error('Upload failed.');
+          } finally {
+            setUploadingBanner(false);
+            e.target.value = '';
+          }
+        }}
+      />
+    </div>
+  </Field>
+</div>
           </Section>
 
           <Section icon={FileText} title="Contact Person"
@@ -566,7 +652,12 @@ export default function ExhibitorProfile() {
                     {ab.boothId?.dimensions ?? ''}{ab.assignedAt ? ` · Assigned ${new Date(ab.assignedAt).toLocaleDateString()}` : ''}
                   </p>
                 </div>
-                <span className="badge badge-success shrink-0">Assigned</span>
+                <span className={cn(
+                  'badge shrink-0',
+                  ab.boothId?.status === 'pending' ? 'badge-warning' : 'badge-success'
+                )}>
+                  {ab.boothId?.status === 'pending' ? 'Pending' : 'Assigned'}
+                </span>
               </div>
             ))}
           </div>

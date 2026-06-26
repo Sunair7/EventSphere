@@ -17,7 +17,10 @@ const {
 const {
   protect,
   authorizeRoles,
+  requireEmailVerified,
 } = require('../middleware/Auth.middleware');
+
+const { messageLimiter } = require('../config/rateLimiter'); // ← Use shared limiter
 
 const { MESSAGE_TYPES } = require('../models/Message');
 
@@ -61,7 +64,6 @@ const sendMessageValidation = [
     .isLength({ min: 1, max: 2000 })
     .withMessage('Message content must be between 1 and 2000 characters.')
     .custom((content, { req }) => {
-      // Content is required unless an attachment is provided
       if (!content && !req.body.attachment) {
         throw new Error('Message must contain either text content or an attachment.');
       }
@@ -117,11 +119,6 @@ const conversationParamValidation = [
 // ─── All routes require authentication ───────────────────────────────────────
 router.use(protect);
 
-// ─── CRITICAL ORDERING ────────────────────────────────────────────────────────
-// Named paths (inbox, unread-count, admin/*) must come before
-// param paths (conversation/:userId, :id) to prevent Express
-// treating "inbox" or "admin" as a MongoDB ObjectId.
-
 // ─── User Inbox & Unread Badge ────────────────────────────────────────────────
 router.get('/inbox',        getInbox);
 router.get('/unread-count', getUnreadCount);
@@ -157,6 +154,8 @@ router.patch(
 // ─── Send Message ─────────────────────────────────────────────────────────────
 router.post(
   '/',
+  requireEmailVerified,
+  messageLimiter,          // ← Shared limiter from config
   sendMessageValidation,
   sendMessage
 );

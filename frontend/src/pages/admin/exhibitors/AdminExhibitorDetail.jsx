@@ -1,21 +1,44 @@
-import { useState }                              from 'react';
-import { useParams, Link }                       from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence }               from 'framer-motion';
+import { motion, AnimatePresence, useInView } from 'framer-motion';
 import {
   ArrowLeft, Building2, FileText, LayoutGrid,
   CheckCircle2, XCircle, Ban, Clock, ShieldCheck,
-  ExternalLink, User, Globe, Linkedin, Twitter,
+  ExternalLink, User, Globe,
   Mail, Phone, Briefcase, AlertCircle, ChevronDown,
-  ChevronUp, RefreshCw,
+  ChevronUp, RefreshCw, Sparkles, Star,
 } from 'lucide-react';
-import { format }                               from 'date-fns';
-import toast                                    from 'react-hot-toast';
-import api                                      from '@/utils/api';
-import { cn }                                   from '@/utils/cn';
+import { FaLinkedin, FaXTwitter } from 'react-icons/fa6';
+import { format } from 'date-fns';
+import toast from 'react-hot-toast';
+import api from '@/utils/api';
+import { cn } from '@/utils/cn';
 
 // ─── Query key ────────────────────────────────────────────────────────────────
 const profileKey = (id) => ['admin', 'exhibitors', id];
+
+// ─── Animated Counter ─────────────────────────────────────────────────────────
+function CountUp({ end, duration = 1 }) {
+  const [display, setDisplay] = useState(0);
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true });
+
+  useEffect(() => {
+    if (!inView || !end) return;
+    let startTime;
+    const step = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / (duration * 1000), 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.floor(end * eased));
+      if (progress < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, [inView, end, duration]);
+
+  return <span ref={ref} className="tabular-nums">{display.toLocaleString()}</span>;
+}
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_CFG = {
@@ -44,11 +67,20 @@ const DOC_TYPE_LABELS = {
 function PageSkeleton() {
   return (
     <div className="flex flex-col gap-6">
-      <div className="skeleton h-8 w-64 rounded" />
+      <div className="flex items-center gap-3">
+        <div className="skeleton h-8 w-8 rounded" />
+        <div className="skeleton h-8 w-64 rounded" />
+      </div>
       <div className="skeleton h-40 rounded-md" />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="skeleton h-52 rounded-md" />
-        <div className="skeleton h-52 rounded-md" />
+        <div className="flex flex-col gap-3">
+          <div className="skeleton h-52 rounded-md" />
+          <div className="skeleton h-32 rounded-md" />
+        </div>
+        <div className="flex flex-col gap-3">
+          <div className="skeleton h-40 rounded-md" />
+          <div className="skeleton h-44 rounded-md" />
+        </div>
       </div>
     </div>
   );
@@ -57,35 +89,35 @@ function PageSkeleton() {
 // ─── Action modal ─────────────────────────────────────────────────────────────
 function ActionModal({ action, profile, onConfirm, onCancel, isMutating }) {
   const [note, setNote] = useState('');
-  const requireNote     = action === 'reject';
+  const requireNote = action === 'reject';
 
   const cfg = {
     approve: {
-      title:  'Approve application?',
-      body:   `"${profile.companyName}" will be approved and can proceed to book booths.`,
-      icon:   CheckCircle2,
+      title: 'Approve application?',
+      body: `"${profile.companyName}" will be approved and can proceed to book booths.`,
+      icon: CheckCircle2,
       iconBg: 'bg-success-container',
       iconFg: 'text-on-success-container',
-      btn:    'btn-secondary',
-      label:  'Approve',
+      btn: 'btn-secondary',
+      label: 'Approve',
     },
     reject: {
-      title:  'Reject application?',
-      body:   `"${profile.companyName}" will be notified with your reason.`,
-      icon:   XCircle,
+      title: 'Reject application?',
+      body: `"${profile.companyName}" will be notified with your reason.`,
+      icon: XCircle,
       iconBg: 'bg-error-container',
       iconFg: 'text-on-error-container',
-      btn:    'btn-danger',
-      label:  'Reject',
+      btn: 'btn-danger',
+      label: 'Reject',
     },
     suspend: {
-      title:  'Suspend exhibitor?',
-      body:   `"${profile.companyName}" will lose access to booth reservations.`,
-      icon:   Ban,
+      title: 'Suspend exhibitor?',
+      body: `"${profile.companyName}" will lose access to booth reservations.`,
+      icon: Ban,
       iconBg: 'bg-warning-container',
       iconFg: 'text-on-warning-container',
-      btn:    'btn-danger',
-      label:  'Suspend',
+      btn: 'btn-danger',
+      label: 'Suspend',
     },
   }[action] || {};
 
@@ -95,14 +127,19 @@ function ActionModal({ action, profile, onConfirm, onCancel, isMutating }) {
     <div className="modal-overlay" role="dialog" aria-modal="true">
       <motion.div
         initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1    }}
-        exit={{ opacity: 0, scale: 0.96    }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96 }}
         transition={{ duration: 0.18 }}
         className="modal-panel max-w-md p-6"
       >
-        <div className={cn('mb-4 flex h-10 w-10 items-center justify-center rounded-md', cfg.iconBg)}>
+        <motion.div
+          initial={{ rotate: -10, scale: 0 }}
+          animate={{ rotate: 0, scale: 1 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 20, delay: 0.1 }}
+          className={cn('mb-4 flex h-10 w-10 items-center justify-center rounded-md', cfg.iconBg)}
+        >
           <Icon size={18} className={cfg.iconFg} />
-        </div>
+        </motion.div>
         <h2 className="mb-1 text-headline-sm font-semibold text-on-surface">{cfg.title}</h2>
         <p className="mb-4 text-body-sm text-on-surface-variant">{cfg.body}</p>
 
@@ -127,13 +164,20 @@ function ActionModal({ action, profile, onConfirm, onCancel, isMutating }) {
 
         <div className="flex justify-end gap-3">
           <button onClick={onCancel} disabled={isMutating} className="btn-ghost">Cancel</button>
-          <button
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => onConfirm(note || null)}
             disabled={isMutating || (requireNote && !note.trim())}
-            className={cfg.btn}
+            className={cn(cfg.btn, 'flex items-center gap-2')}
           >
-            {isMutating ? 'Processing…' : cfg.label}
-          </button>
+            {isMutating ? (
+              <>
+                <RefreshCw size={14} className="animate-spin-slow" />
+                Processing…
+              </>
+            ) : cfg.label}
+          </motion.button>
         </div>
       </motion.div>
     </div>
@@ -143,14 +187,14 @@ function ActionModal({ action, profile, onConfirm, onCancel, isMutating }) {
 // ─── Document review row ──────────────────────────────────────────────────────
 function DocumentRow({ doc, profileId, onReviewed }) {
   const [reviewing, setReviewing] = useState(false);
-  const [note, setNote]           = useState('');
-  const queryClient               = useQueryClient();
+  const [note, setNote] = useState('');
+  const queryClient = useQueryClient();
 
   const reviewMutation = useMutation({
     mutationFn: ({ status, note }) =>
       api.patch(`/exhibitors/${profileId}/documents/${doc._id}/review`, { status, note }),
     onSuccess: () => {
-      toast.success('Document reviewed.');
+      toast.success('Document reviewed.', { icon: '✅' });
       queryClient.invalidateQueries({ queryKey: profileKey(profileId) });
       setReviewing(false);
       setNote('');
@@ -162,7 +206,12 @@ function DocumentRow({ doc, profileId, onReviewed }) {
   const dCfg = DOC_CFG[doc.status] || DOC_CFG.pending;
 
   return (
-    <div className="rounded-md border border-outline-variant bg-surface-bright">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-md border border-outline-variant bg-surface-bright overflow-hidden
+                 hover:shadow-sm transition-shadow duration-200"
+    >
       <div className="flex items-center gap-3 px-4 py-3">
         <FileText size={15} className="text-on-surface-variant shrink-0" />
         <div className="flex-1 min-w-0">
@@ -174,23 +223,31 @@ function DocumentRow({ doc, profileId, onReviewed }) {
           </p>
         </div>
         <span className={cn('badge shrink-0', dCfg.badge)}>{dCfg.label}</span>
-        <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer"
+        <motion.a
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.95 }}
+          href={doc.fileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
           className="shrink-0 rounded p-1.5 text-on-surface-variant hover:bg-surface-container
-                     hover:text-on-surface transition-colors">
+                     hover:text-on-surface transition-colors"
+        >
           <ExternalLink size={14} />
-        </a>
+        </motion.a>
         {doc.status === 'pending' && (
-          <button
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => setReviewing((v) => !v)}
             className="shrink-0 btn-ghost btn-sm gap-1"
           >
             Review {reviewing ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-          </button>
+          </motion.button>
         )}
       </div>
 
       {doc.reviewNote && (
-        <div className="border-t border-outline-variant px-4 py-2">
+        <div className="border-t border-outline-variant px-4 py-2 bg-surface-container-low/50">
           <p className="font-mono text-label-sm text-on-surface-variant">
             Note: <span className="text-on-surface">{doc.reviewNote}</span>
           </p>
@@ -206,7 +263,7 @@ function DocumentRow({ doc, profileId, onReviewed }) {
             transition={{ duration: 0.18 }}
             className="overflow-hidden"
           >
-            <div className="border-t border-outline-variant px-4 py-3 flex flex-col gap-3">
+            <div className="border-t border-outline-variant px-4 py-3 flex flex-col gap-3 bg-surface-container-low/30">
               <textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
@@ -216,41 +273,49 @@ function DocumentRow({ doc, profileId, onReviewed }) {
                 maxLength={500}
               />
               <div className="flex gap-2 justify-end">
-                <button
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => reviewMutation.mutate({ status: 'rejected', note: note || null })}
                   disabled={reviewMutation.isPending}
                   className="btn-ghost btn-sm gap-1 text-error hover:bg-error-container"
                 >
                   <XCircle size={13} /> Flag
-                </button>
-                <button
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => reviewMutation.mutate({ status: 'verified', note: note || null })}
                   disabled={reviewMutation.isPending}
                   className="btn-secondary btn-sm gap-1"
                 >
-                  <CheckCircle2 size={13} />
+                  {reviewMutation.isPending ? (
+                    <RefreshCw size={13} className="animate-spin-slow" />
+                  ) : (
+                    <CheckCircle2 size={13} />
+                  )}
                   {reviewMutation.isPending ? 'Verifying…' : 'Verify'}
-                </button>
+                </motion.button>
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function AdminExhibitorDetail() {
-  const { id }       = useParams();
-  const queryClient  = useQueryClient();
+  const { id } = useParams();
+  const queryClient = useQueryClient();
   const [modal, setModal] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
 
   // ── Fetch profile ───────────────────────────────────────────────────────────
   const { data: profile, isLoading, isError, refetch } = useQuery({
     queryKey: profileKey(id),
-    queryFn:  async () => {
+    queryFn: async () => {
       const { data } = await api.get(`/exhibitors/${id}`);
       return data.data.profile;
     },
@@ -261,30 +326,30 @@ export default function AdminExhibitorDetail() {
 
   const approveMutation = useMutation({
     mutationFn: (note) => api.patch(`/exhibitors/${id}/approve`, { note }),
-    onSuccess:  () => { toast.success('Application approved.'); invalidate(); setModal(null); },
-    onError:    (err) => toast.error(err.message || 'Failed to approve.'),
+    onSuccess: () => { toast.success('Application approved.', { icon: '✅' }); invalidate(); setModal(null); },
+    onError: (err) => toast.error(err.message || 'Failed to approve.'),
   });
 
   const rejectMutation = useMutation({
     mutationFn: (note) => api.patch(`/exhibitors/${id}/reject`, { note }),
-    onSuccess:  () => { toast.success('Application rejected.'); invalidate(); setModal(null); },
-    onError:    (err) => toast.error(err.message || 'Failed to reject.'),
+    onSuccess: () => { toast.success('Application rejected.', { icon: '❌' }); invalidate(); setModal(null); },
+    onError: (err) => toast.error(err.message || 'Failed to reject.'),
   });
 
   const suspendMutation = useMutation({
     mutationFn: (note) => api.patch(`/exhibitors/${id}/suspend`, { note }),
-    onSuccess:  () => { toast.success('Exhibitor suspended.'); invalidate(); setModal(null); },
-    onError:    (err) => toast.error(err.message || 'Failed to suspend.'),
+    onSuccess: () => { toast.success('Exhibitor suspended.', { icon: '⚠️' }); invalidate(); setModal(null); },
+    onError: (err) => toast.error(err.message || 'Failed to suspend.'),
   });
 
   const isMutating =
     approveMutation.isPending ||
-    rejectMutation.isPending  ||
+    rejectMutation.isPending ||
     suspendMutation.isPending;
 
   const handleConfirm = (note) => {
     if (modal === 'approve') approveMutation.mutate(note);
-    if (modal === 'reject')  rejectMutation.mutate(note);
+    if (modal === 'reject') rejectMutation.mutate(note);
     if (modal === 'suspend') suspendMutation.mutate(note);
   };
 
@@ -293,13 +358,28 @@ export default function AdminExhibitorDetail() {
 
   if (isError || !profile) {
     return (
-      <div className="empty-state py-20">
-        <div className="empty-state-icon text-error"><AlertCircle size={28} /></div>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="empty-state py-20"
+      >
+        <motion.div
+          animate={{ rotate: [0, 10, -10, 0] }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+          className="empty-state-icon text-error"
+        >
+          <AlertCircle size={28} />
+        </motion.div>
         <h3 className="empty-state-title">Profile not found</h3>
-        <button onClick={() => refetch()} className="btn-ghost btn-sm mt-3 gap-1">
+        <motion.button
+          whileHover={{ scale: 1.03 }}
+          whileTap={{ scale: 0.97 }}
+          onClick={() => refetch()}
+          className="btn-ghost btn-sm mt-3 gap-1"
+        >
           <RefreshCw size={13} /> Retry
-        </button>
-      </div>
+        </motion.button>
+      </motion.div>
     );
   }
 
@@ -312,74 +392,127 @@ export default function AdminExhibitorDetail() {
 
         {/* ── Header ──────────────────────────────────────────────── */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3">
+          <motion.div
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3 }}
+            className="flex items-center gap-3"
+          >
             <Link to="/admin/exhibitors" className="btn-ghost btn-sm gap-1.5">
               <ArrowLeft size={15} /> Exhibitors
             </Link>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-headline-md font-semibold text-on-surface">
+                <h1 className="text-headline-md font-semibold text-on-surface flex items-center gap-2">
+                  <Sparkles size={18} className="text-secondary" />
                   {profile.companyName}
                 </h1>
-                <span className={cn('badge', statusCfg.badge)}>
+                <motion.span
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 300, delay: 0.2 }}
+                  className={cn('badge', statusCfg.badge)}
+                >
+                  {profile.applicationStatus === 'pending' && (
+                    <span className="relative flex h-1.5 w-1.5 mr-1">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-warning opacity-75" />
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-warning" />
+                    </span>
+                  )}
                   {profile.applicationStatus}
-                </span>
+                </motion.span>
                 {profile.isVerified && (
-                  <span className="flex items-center gap-1 font-mono text-label-sm text-secondary">
+                  <motion.span
+                    initial={{ opacity: 0, x: -5 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.3 }}
+                    className="flex items-center gap-1 font-mono text-label-sm text-secondary"
+                  >
                     <ShieldCheck size={13} /> Verified
-                  </span>
+                  </motion.span>
                 )}
               </div>
               <p className="font-mono text-label-sm text-on-surface-variant mt-0.5">
                 {profile.userId?.email}
               </p>
             </div>
-          </div>
+          </motion.div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <motion.div
+            initial={{ opacity: 0, x: 10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+            className="flex items-center gap-2 flex-wrap"
+          >
             {profile.applicationStatus === 'pending' && (
               <>
-                <button onClick={() => setModal('approve')}
-                  className="btn-secondary btn-sm gap-1.5">
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setModal('approve')}
+                  className="btn-secondary btn-sm gap-1.5"
+                >
                   <CheckCircle2 size={14} /> Approve
-                </button>
-                <button onClick={() => setModal('reject')}
-                  className="btn-danger btn-sm gap-1.5">
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setModal('reject')}
+                  className="btn-danger btn-sm gap-1.5"
+                >
                   <XCircle size={14} /> Reject
-                </button>
+                </motion.button>
               </>
             )}
             {profile.applicationStatus === 'approved' && (
-              <button onClick={() => setModal('suspend')}
-                className="btn-ghost btn-sm gap-1.5 text-error hover:bg-error-container">
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => setModal('suspend')}
+                className="btn-ghost btn-sm gap-1.5 text-error hover:bg-error-container"
+              >
                 <Ban size={14} /> Suspend
-              </button>
+              </motion.button>
             )}
             {(profile.applicationStatus === 'rejected' ||
               profile.applicationStatus === 'suspended') && (
-              <button onClick={() => setModal('approve')}
-                className="btn-secondary btn-sm gap-1.5">
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => setModal('approve')}
+                className="btn-secondary btn-sm gap-1.5"
+              >
                 <CheckCircle2 size={14} /> Re-approve
-              </button>
+              </motion.button>
             )}
-          </div>
+          </motion.div>
         </div>
 
         {/* ── Application status card ──────────────────────────────── */}
-        <div className="card">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15, duration: 0.3 }}
+          className="card hover:shadow-level-2 transition-shadow duration-200"
+        >
           <div className="flex items-start gap-3">
-            <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded',
-              profile.applicationStatus === 'approved' ? 'bg-success-container'
-              : profile.applicationStatus === 'pending' ? 'bg-warning-container'
-              : 'bg-error-container'
-            )}>
+            <motion.div
+              whileHover={{ rotate: [0, -5, 5, 0] }}
+              transition={{ duration: 0.3 }}
+              className={cn(
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+                profile.applicationStatus === 'approved' ? 'bg-success-container'
+                : profile.applicationStatus === 'pending' ? 'bg-warning-container'
+                : 'bg-error-container'
+              )}
+            >
               <StatusIcon size={17} className={
                 profile.applicationStatus === 'approved' ? 'text-on-success-container'
                 : profile.applicationStatus === 'pending' ? 'text-on-warning-container'
                 : 'text-on-error-container'
               } />
-            </div>
+            </motion.div>
             <div className="flex-1 min-w-0">
               <p className="text-body-sm font-medium text-on-surface">
                 {statusCfg.label}
@@ -393,7 +526,7 @@ export default function AdminExhibitorDetail() {
                 )}
               </p>
               {profile.applicationNote && (
-                <div className="mt-1.5 rounded bg-surface-container px-3 py-2">
+                <div className="mt-1.5 rounded-lg bg-surface-container px-3 py-2 border border-outline-variant">
                   <p className="font-mono text-label-sm text-on-surface-variant">
                     Note: <span className="text-on-surface">{profile.applicationNote}</span>
                   </p>
@@ -402,11 +535,15 @@ export default function AdminExhibitorDetail() {
             </div>
 
             {/* History toggle */}
-            <button onClick={() => setShowHistory((v) => !v)}
-              className="btn-ghost btn-sm gap-1 shrink-0">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setShowHistory((v) => !v)}
+              className="btn-ghost btn-sm gap-1 shrink-0"
+            >
               History
               {showHistory ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            </button>
+            </motion.button>
           </div>
 
           {/* Application history */}
@@ -424,7 +561,13 @@ export default function AdminExhibitorDetail() {
                     Application History
                   </p>
                   {profile.applicationHistory.map((entry, i) => (
-                    <div key={i} className="flex items-start gap-2 text-body-sm">
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      className="flex items-start gap-2 text-body-sm"
+                    >
                       <span className="font-mono text-label-sm text-on-surface-variant shrink-0 mt-0.5">
                         {entry.changedAt ? format(new Date(entry.changedAt), 'MMM d, HH:mm') : '—'}
                       </span>
@@ -435,23 +578,32 @@ export default function AdminExhibitorDetail() {
                           <span className="ml-2 text-on-surface-variant">"{entry.reason}"</span>
                         )}
                       </span>
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+        </motion.div>
 
         {/* ── Two column layout ────────────────────────────────────── */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
 
           {/* Company info */}
-          <div className="card flex flex-col gap-4">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.3 }}
+            className="card flex flex-col gap-4 hover:shadow-level-2 transition-shadow duration-200"
+          >
             <div className="flex items-start gap-3 border-b border-outline-variant pb-4">
               {profile.logo ? (
-                <img src={profile.logo} alt={profile.companyName}
-                  className="h-12 w-12 rounded object-contain border border-outline-variant bg-surface-bright shrink-0" />
+                <motion.img
+                  whileHover={{ scale: 1.05 }}
+                  src={profile.logo}
+                  alt={profile.companyName}
+                  className="h-12 w-12 rounded object-contain border border-outline-variant bg-surface-bright shrink-0 transition-transform"
+                />
               ) : (
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded
                                 bg-primary-container text-on-primary-container">
@@ -472,7 +624,7 @@ export default function AdminExhibitorDetail() {
             </div>
 
             {profile.description && (
-              <p className="text-body-sm text-on-surface-variant leading-relaxed line-clamp-4">
+              <p className="text-body-sm text-on-surface-variant leading-relaxed">
                 {profile.description}
               </p>
             )}
@@ -483,8 +635,16 @@ export default function AdminExhibitorDetail() {
                   Products & Services
                 </p>
                 <div className="flex flex-wrap gap-1.5">
-                  {profile.products.slice(0, 8).map((p) => (
-                    <span key={p} className="badge badge-neutral">{p}</span>
+                  {profile.products.slice(0, 8).map((p, i) => (
+                    <motion.span
+                      key={p}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: i * 0.03 }}
+                      className="badge badge-neutral"
+                    >
+                      {p}
+                    </motion.span>
                   ))}
                   {profile.products.length > 8 && (
                     <span className="badge badge-neutral">+{profile.products.length - 8}</span>
@@ -523,61 +683,94 @@ export default function AdminExhibitorDetail() {
             {(profile.socialLinks?.website || profile.socialLinks?.linkedin || profile.socialLinks?.twitter) && (
               <div className="flex items-center gap-3 flex-wrap">
                 {profile.socialLinks.website && (
-                  <a href={profile.socialLinks.website} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1 font-mono text-label-sm text-tertiary hover:text-secondary transition-colors">
+                  <motion.a
+                    whileHover={{ scale: 1.05 }}
+                    href={profile.socialLinks.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 font-mono text-label-sm text-tertiary hover:text-secondary transition-colors"
+                  >
                     <Globe size={13} /> Website
-                  </a>
+                  </motion.a>
                 )}
                 {profile.socialLinks.linkedin && (
-                  <a href={profile.socialLinks.linkedin} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1 font-mono text-label-sm text-tertiary hover:text-secondary transition-colors">
-                    <Linkedin size={13} /> LinkedIn
-                  </a>
+                  <motion.a
+                    whileHover={{ scale: 1.05 }}
+                    href={profile.socialLinks.linkedin}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 font-mono text-label-sm text-tertiary hover:text-secondary transition-colors"
+                  >
+                    <FaLinkedin size={13} /> LinkedIn
+                  </motion.a>
                 )}
                 {profile.socialLinks.twitter && (
-                  <a href={profile.socialLinks.twitter} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1 font-mono text-label-sm text-tertiary hover:text-secondary transition-colors">
-                    <Twitter size={13} /> Twitter
-                  </a>
+                  <motion.a
+                    whileHover={{ scale: 1.05 }}
+                    href={profile.socialLinks.twitter}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 font-mono text-label-sm text-tertiary hover:text-secondary transition-colors"
+                  >
+                    <FaXTwitter size={13} /> Twitter
+                  </motion.a>
                 )}
               </div>
             )}
-          </div>
+          </motion.div>
 
           {/* Right column: documents + account info */}
           <div className="flex flex-col gap-6">
 
             {/* User account */}
-            <div className="card flex flex-col gap-3">
-              <h3 className="text-headline-sm font-semibold text-on-surface border-b border-outline-variant pb-3">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25, duration: 0.3 }}
+              className="card flex flex-col gap-3 hover:shadow-level-2 transition-shadow duration-200"
+            >
+              <h3 className="text-headline-sm font-semibold text-on-surface border-b border-outline-variant pb-3 flex items-center gap-2">
+                <User size={16} className="text-secondary" />
                 Account Details
               </h3>
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  { label: 'Name',          value: profile.userId?.name                                     },
-                  { label: 'Email',         value: profile.userId?.email                                    },
-                  { label: 'Registered',    value: profile.userId?.createdAt
-                    ? format(new Date(profile.userId.createdAt), 'MMM d, yyyy') : '—'                       },
-                  { label: 'Last Login',    value: profile.userId?.lastLoginAt
-                    ? format(new Date(profile.userId.lastLoginAt), 'MMM d, HH:mm') : 'Never'                },
-                  { label: 'Email Verified',value: profile.userId?.isEmailVerified ? 'Yes' : 'No'           },
+                  { label: 'Name', value: profile.userId?.name },
+                  { label: 'Email', value: profile.userId?.email },
+                  { label: 'Registered', value: profile.userId?.createdAt
+                    ? format(new Date(profile.userId.createdAt), 'MMM d, yyyy') : '—' },
+                  { label: 'Last Login', value: profile.userId?.lastLoginAt
+                    ? format(new Date(profile.userId.lastLoginAt), 'MMM d, HH:mm') : 'Never' },
+                  { label: 'Email Verified', value: profile.userId?.isEmailVerified ? 'Yes' : 'No' },
                   { label: 'Profile Since', value: profile.createdAt
-                    ? format(new Date(profile.createdAt), 'MMM d, yyyy') : '—'                              },
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex flex-col gap-0.5">
+                    ? format(new Date(profile.createdAt), 'MMM d, yyyy') : '—' },
+                ].map(({ label, value }, i) => (
+                  <motion.div
+                    key={label}
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 + i * 0.04 }}
+                    className="flex flex-col gap-0.5"
+                  >
                     <span className="font-mono text-label-sm text-on-surface-variant">{label}</span>
                     <span className="text-body-sm font-medium text-on-surface truncate">
                       {value ?? '—'}
                     </span>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
-            </div>
+            </motion.div>
 
             {/* Documents */}
-            <div className="card flex flex-col gap-3">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.3 }}
+              className="card flex flex-col gap-3 hover:shadow-level-2 transition-shadow duration-200"
+            >
               <div className="flex items-center justify-between border-b border-outline-variant pb-3">
-                <h3 className="text-headline-sm font-semibold text-on-surface">
+                <h3 className="text-headline-sm font-semibold text-on-surface flex items-center gap-2">
+                  <FileText size={16} className="text-secondary" />
                   Documents ({profile.documents?.length || 0})
                 </h3>
                 {profile.documents?.length > 0 && (
@@ -590,7 +783,13 @@ export default function AdminExhibitorDetail() {
 
               {!profile.documents?.length ? (
                 <div className="py-6 text-center">
-                  <p className="text-body-sm text-on-surface-variant">No documents uploaded yet.</p>
+                  <motion.div
+                    animate={{ y: [0, -5, 0] }}
+                    transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+                  >
+                    <FileText size={24} className="mx-auto text-on-surface-variant/30" />
+                  </motion.div>
+                  <p className="text-body-sm text-on-surface-variant mt-2">No documents uploaded yet.</p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
@@ -604,21 +803,34 @@ export default function AdminExhibitorDetail() {
                   ))}
                 </div>
               )}
-            </div>
+            </motion.div>
           </div>
         </div>
 
         {/* ── Assigned booths ──────────────────────────────────────── */}
         {profile.assignedBooths?.length > 0 && (
-          <div className="card flex flex-col gap-3">
-            <h3 className="text-headline-sm font-semibold text-on-surface border-b border-outline-variant pb-3">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35, duration: 0.3 }}
+            className="card flex flex-col gap-3"
+          >
+            <h3 className="text-headline-sm font-semibold text-on-surface border-b border-outline-variant pb-3 flex items-center gap-2">
+              <LayoutGrid size={16} className="text-secondary" />
               Assigned Booths ({profile.assignedBooths.length})
             </h3>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {profile.assignedBooths.map((ab, i) => (
-                <div key={i} className="flex items-center gap-3 rounded-md border border-outline-variant
-                                        bg-surface-bright px-4 py-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  whileHover={{ y: -2, transition: { duration: 0.15 } }}
+                  className="flex items-center gap-3 rounded-md border border-outline-variant
+                             bg-surface-bright px-4 py-3 hover:shadow-sm transition-all duration-200"
+                >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md
                                   bg-primary-container font-mono text-label-md font-bold text-on-primary-container">
                     {ab.boothId?.boothNumber ?? '—'}
                   </div>
@@ -632,16 +844,20 @@ export default function AdminExhibitorDetail() {
                     </p>
                   </div>
                   {ab.expoId?._id && (
-                    <Link to={`/admin/expos/${ab.expoId._id}/floor-plan`}
-                      className="shrink-0 rounded p-1.5 text-on-surface-variant hover:bg-surface-container
-                                 hover:text-on-surface transition-colors">
-                      <LayoutGrid size={14} />
-                    </Link>
+                    <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}>
+                      <Link
+                        to={`/admin/expos/${ab.expoId._id}/floor-plan`}
+                        className="shrink-0 rounded p-1.5 text-on-surface-variant hover:bg-surface-container
+                                   hover:text-on-surface transition-colors"
+                      >
+                        <LayoutGrid size={14} />
+                      </Link>
+                    </motion.div>
                   )}
-                </div>
+                </motion.div>
               ))}
             </div>
-          </div>
+          </motion.div>
         )}
       </div>
 

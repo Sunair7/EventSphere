@@ -1,19 +1,20 @@
-import { useState, useMemo }                    from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence }               from 'framer-motion';
+import { motion, AnimatePresence, useInView } from 'framer-motion';
 import {
   CalendarDays, BookmarkCheck, Bookmark,
   CheckCircle2, MapPin, Clock, Mic2,
   Users, X, BookOpen, AlertCircle,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Sparkles,
+  Star, ExternalLink, Globe,
 } from 'lucide-react';
 import {
   format, parseISO, isSameDay, startOfDay,
   addDays, differenceInMinutes, isPast,
 } from 'date-fns';
-import toast                                     from 'react-hot-toast';
-import api                                       from '@/utils/api';
-import { cn }                                    from '@/utils/cn';
+import toast from 'react-hot-toast';
+import api from '@/utils/api';
+import { cn } from '@/utils/cn';
 
 // ─── Query keys ───────────────────────────────────────────────────────────────
 const myRegKey       = ['sessions', 'me', 'registrations'];
@@ -46,7 +47,7 @@ const FORMAT_COLOR = {
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 function AgendaRowSkeleton() {
   return (
-    <div className="flex items-start gap-3 py-2">
+    <div className="flex items-start gap-3 py-2 px-4">
       <div className="skeleton h-10 w-14 rounded shrink-0" />
       <div className="flex-1 flex flex-col gap-1.5">
         <div className="skeleton h-4 w-3/4 rounded" />
@@ -63,29 +64,63 @@ function SessionDetailPanel({ session, isRegistered, isBookmarked, onClose, onUn
 
   return (
     <motion.aside
-      initial={{ opacity: 0, x: 24 }}
-      animate={{ opacity: 1, x: 0  }}
-      exit={{ opacity: 0, x: 24    }}
-      transition={{ duration: 0.2  }}
-      className="flex w-80 shrink-0 flex-col gap-4 rounded-md border border-outline-variant
-                 bg-surface-bright p-5 shadow-level-2 overflow-y-auto max-h-[calc(100dvh-8rem)]"
+      initial={{ opacity: 0, x: 30 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 30 }}
+      transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+      className="flex w-80 shrink-0 flex-col gap-4 rounded-xl border border-outline-variant
+                 bg-surface-bright p-5 shadow-level-2 overflow-y-auto max-h-[calc(100dvh-8rem)]
+                 sticky top-20"
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div>
-          <span className={cn('badge text-label-sm capitalize mb-2 inline-block',
-            FORMAT_COLOR[session.format] || FORMAT_COLOR.other)}>
+          <motion.span
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', stiffness: 300 }}
+            className={cn('badge text-label-sm capitalize mb-2 inline-block',
+              FORMAT_COLOR[session.format] || FORMAT_COLOR.other)}
+          >
             {session.format}
-          </span>
+          </motion.span>
           <h3 className="text-body-md font-semibold text-on-surface leading-snug">
             {session.title}
           </h3>
         </div>
-        <button onClick={onClose}
-          className="shrink-0 rounded p-1 text-on-surface-variant hover:bg-surface-container
-                     hover:text-on-surface transition-colors">
+        <motion.button
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          onClick={onClose}
+          className="shrink-0 rounded-lg p-1.5 text-on-surface-variant hover:bg-surface-container
+                     hover:text-on-surface transition-colors"
+        >
           <X size={16} />
-        </button>
+        </motion.button>
+      </div>
+
+      {/* Status badges */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {session.status === 'live' && (
+          <span className="badge badge-success gap-1">
+            <motion.span
+              animate={{ opacity: [1, 0.3, 1] }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+              className="h-1.5 w-1.5 rounded-full bg-success"
+            />
+            Live Now
+          </span>
+        )}
+        {isRegistered && (
+          <span className="badge badge-success gap-1">
+            <CheckCircle2 size={11} /> Registered
+          </span>
+        )}
+        {isBookmarked && (
+          <span className="badge badge-info gap-1">
+            <BookmarkCheck size={11} /> Saved
+          </span>
+        )}
       </div>
 
       <div className="divider" />
@@ -109,6 +144,20 @@ function SessionDetailPanel({ session, isRegistered, isBookmarked, onClose, onUn
             <span className="font-mono text-label-md text-on-surface">
               {session.attendeeCount ?? 0} / {session.maxCapacity} registered
             </span>
+            {/* Capacity bar */}
+            <div className="flex-1 h-1.5 rounded-full bg-surface-container-high overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${Math.min(((session.attendeeCount ?? 0) / session.maxCapacity) * 100, 100)}%` }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+                className={cn(
+                  'h-full rounded-full',
+                  (session.attendeeCount ?? 0) / session.maxCapacity >= 0.9 ? 'bg-error'
+                    : (session.attendeeCount ?? 0) / session.maxCapacity >= 0.7 ? 'bg-warning'
+                    : 'bg-secondary'
+                )}
+              />
+            </div>
           </div>
         )}
       </div>
@@ -122,8 +171,14 @@ function SessionDetailPanel({ session, isRegistered, isBookmarked, onClose, onUn
               {session.speakers.length === 1 ? 'Speaker' : 'Speakers'}
             </p>
             <div className="flex flex-col gap-2">
-              {session.speakers.map((speaker) => (
-                <div key={speaker._id || speaker.name} className="flex items-start gap-2">
+              {session.speakers.map((speaker, i) => (
+                <motion.div
+                  key={speaker._id || speaker.name}
+                  initial={{ opacity: 0, x: -5 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className="flex items-start gap-2"
+                >
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full
                                   bg-primary-container font-mono text-label-sm font-bold text-on-primary-container">
                     {speaker.name.charAt(0)}
@@ -136,7 +191,7 @@ function SessionDetailPanel({ session, isRegistered, isBookmarked, onClose, onUn
                       </p>
                     )}
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           </div>
@@ -147,7 +202,7 @@ function SessionDetailPanel({ session, isRegistered, isBookmarked, onClose, onUn
       {session.description && (
         <>
           <div className="divider" />
-          <p className="text-body-sm text-on-surface-variant leading-relaxed line-clamp-5">
+          <p className="text-body-sm text-on-surface-variant leading-relaxed">
             {session.description}
           </p>
         </>
@@ -158,8 +213,16 @@ function SessionDetailPanel({ session, isRegistered, isBookmarked, onClose, onUn
         <>
           <div className="divider" />
           <div className="flex flex-wrap gap-1.5">
-            {session.tags.map((tag) => (
-              <span key={tag} className="badge badge-neutral">{tag}</span>
+            {session.tags.map((tag, i) => (
+              <motion.span
+                key={tag}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: i * 0.03 }}
+                className="badge badge-neutral"
+              >
+                {tag}
+              </motion.span>
             ))}
           </div>
         </>
@@ -174,12 +237,19 @@ function SessionDetailPanel({ session, isRegistered, isBookmarked, onClose, onUn
               Resources
             </p>
             {session.resources.map((r) => (
-              <a key={r._id} href={r.url} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded px-2 py-1.5 text-body-sm
-                           text-tertiary hover:bg-surface-container transition-colors">
+              <motion.a
+                key={r._id}
+                whileHover={{ x: 3 }}
+                href={r.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-body-sm
+                           text-tertiary hover:bg-surface-container transition-all"
+              >
                 <BookOpen size={13} />
                 {r.label}
-              </a>
+                <ExternalLink size={10} className="ml-auto opacity-50" />
+              </motion.a>
             ))}
           </div>
         </>
@@ -190,20 +260,30 @@ function SessionDetailPanel({ session, isRegistered, isBookmarked, onClose, onUn
       {/* Actions */}
       <div className="flex flex-col gap-2">
         {!isPastSes && isRegistered && (
-          <button onClick={onUnregister} disabled={isMutating}
-            className="btn-ghost w-full gap-1.5 text-error hover:bg-error-container justify-center">
+          <motion.button
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.99 }}
+            onClick={onUnregister}
+            disabled={isMutating}
+            className="btn-ghost w-full gap-1.5 text-error hover:bg-error-container justify-center"
+          >
             <X size={14} /> Cancel Registration
-          </button>
+          </motion.button>
         )}
-        <button onClick={onBookmark} disabled={isMutating}
+        <motion.button
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
+          onClick={onBookmark}
+          disabled={isMutating}
           className={cn(
             'btn-ghost w-full gap-1.5 justify-center',
             isBookmarked && 'text-tertiary border-tertiary'
-          )}>
+          )}
+        >
           {isBookmarked
             ? <><BookmarkCheck size={14} /> Remove Bookmark</>
             : <><Bookmark size={14} /> Bookmark Session</>}
-        </button>
+        </motion.button>
       </div>
     </motion.aside>
   );
@@ -217,11 +297,13 @@ function AgendaRow({ session, isRegistered, isBookmarked, onClick, isSelected })
   return (
     <motion.button
       layout
+      whileHover={{ x: 2 }}
+      whileTap={{ scale: 0.995 }}
       onClick={() => onClick(session)}
       className={cn(
-        'flex w-full items-start gap-4 rounded-md px-4 py-3 text-left transition-all duration-150',
+        'flex w-full items-start gap-4 rounded-lg px-4 py-3 text-left transition-all duration-200',
         isSelected
-          ? 'bg-primary-container ring-1 ring-primary/20'
+          ? 'bg-primary-container ring-1 ring-primary/20 shadow-sm'
           : 'hover:bg-surface-container-low',
         isPastSes && 'opacity-50'
       )}
@@ -231,7 +313,10 @@ function AgendaRow({ session, isRegistered, isBookmarked, onClick, isSelected })
         <span className="font-mono text-label-sm text-on-surface-variant leading-none">
           {format(new Date(session.startTime), 'HH:mm')}
         </span>
-        <div className="h-3 w-0.5 bg-outline-variant my-0.5" />
+        <div className={cn(
+          'h-3 w-0.5 my-0.5 rounded-full',
+          isLive ? 'bg-success' : 'bg-outline-variant'
+        )} />
         <span className="font-mono text-label-sm text-on-surface-variant leading-none">
           {format(new Date(session.endTime), 'HH:mm')}
         </span>
@@ -240,13 +325,22 @@ function AgendaRow({ session, isRegistered, isBookmarked, onClick, isSelected })
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-start gap-2 flex-wrap mb-1">
-          <span className={cn('badge text-label-sm capitalize shrink-0',
-            FORMAT_COLOR[session.format] || FORMAT_COLOR.other)}>
+          <motion.span
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', stiffness: 300 }}
+            className={cn('badge text-label-sm capitalize shrink-0',
+              FORMAT_COLOR[session.format] || FORMAT_COLOR.other)}
+          >
             {session.format}
-          </span>
+          </motion.span>
           {isLive && (
             <span className="badge badge-success gap-1 shrink-0">
-              <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse-soft" />
+              <motion.span
+                animate={{ opacity: [1, 0.3, 1] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+                className="h-1.5 w-1.5 rounded-full bg-success"
+              />
               Live
             </span>
           )}
@@ -282,6 +376,15 @@ function AgendaRow({ session, isRegistered, isBookmarked, onClick, isSelected })
           )}
         </div>
       </div>
+
+      {/* Arrow indicator */}
+      <ChevronRight
+        size={16}
+        className={cn(
+          'shrink-0 self-center transition-all',
+          isSelected ? 'text-primary rotate-90' : 'text-on-surface-variant/30'
+        )}
+      />
     </motion.button>
   );
 }
@@ -289,13 +392,13 @@ function AgendaRow({ session, isRegistered, isBookmarked, onClick, isSelected })
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function AttendeeSchedule() {
   const queryClient                     = useQueryClient();
-  const [view, setView]                 = useState('registered'); // 'registered' | 'bookmarked'
+  const [view, setView]                 = useState('registered');
   const [selectedSession, setSelected]  = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
   const [mutatingId, setMutatingId]     = useState(null);
 
-  const { data: registrations = [], isLoading: regLoading  } = useMyRegistrations();
-  const { data: bookmarks     = [], isLoading: bmkLoading   } = useMyBookmarks();
+  const { data: registrations = [], isLoading: regLoading } = useMyRegistrations();
+  const { data: bookmarks = [], isLoading: bmkLoading } = useMyBookmarks();
 
   const isLoading = regLoading || bmkLoading;
 
@@ -304,7 +407,6 @@ export default function AttendeeSchedule() {
   const registeredIds = useMemo(() => new Set(registrations.map((s) => s._id)), [registrations]);
   const bookmarkedIds = useMemo(() => new Set(bookmarks.map((s) => s._id)), [bookmarks]);
 
-  // Group sessions by date
   const groupedByDate = useMemo(() => {
     const groups = {};
     activeSessions.forEach((s) => {
@@ -312,7 +414,6 @@ export default function AttendeeSchedule() {
       if (!groups[key]) groups[key] = [];
       groups[key].push(s);
     });
-    // Sort sessions within each day by startTime
     Object.values(groups).forEach((arr) =>
       arr.sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
     );
@@ -324,7 +425,6 @@ export default function AttendeeSchedule() {
     [groupedByDate]
   );
 
-  // Auto-select first date
   const activeDateKey = selectedDate || sortedDates[0] || null;
   const sessionsForDay = activeDateKey ? (groupedByDate[activeDateKey] || []) : [];
 
@@ -348,7 +448,7 @@ export default function AttendeeSchedule() {
     mutationFn: (id) => api.post(`/sessions/${id}/bookmark`),
     onSuccess: (res) => {
       const { isBookmarked } = res.data;
-      toast.success(isBookmarked ? 'Session bookmarked.' : 'Bookmark removed.');
+      toast.success(isBookmarked ? 'Bookmarked! 🔖' : 'Bookmark removed.');
       queryClient.invalidateQueries({ queryKey: myBookmarkKey });
       setMutatingId(null);
     },
@@ -362,50 +462,80 @@ export default function AttendeeSchedule() {
     <div className="flex flex-col gap-6">
 
       {/* ── Header ──────────────────────────────────────────────── */}
-      <div className="page-header">
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="page-header"
+      >
         <div>
-          <h1 className="page-title">My Schedule</h1>
+          <h1 className="page-title flex items-center gap-2">
+            <Sparkles size={20} className="text-secondary" />
+            My Schedule
+          </h1>
           <p className="page-subtitle">Your personalised event agenda.</p>
         </div>
 
         {/* View toggle */}
-        <div className="flex rounded border border-outline-variant overflow-hidden shrink-0">
+        <div className="flex rounded-lg border border-outline-variant overflow-hidden shrink-0">
           {[
-            { key: 'registered', label: `Registered (${registrations.length})`, icon: CheckCircle2 },
-            { key: 'bookmarked', label: `Bookmarked (${bookmarks.length})`,     icon: BookmarkCheck },
-          ].map(({ key, label, icon: Icon }) => (
-            <button
+            { key: 'registered', label: `Registered`, icon: CheckCircle2, count: registrations.length },
+            { key: 'bookmarked', label: `Saved`, icon: BookmarkCheck, count: bookmarks.length },
+          ].map(({ key, label, icon: Icon, count }) => (
+            <motion.button
               key={key}
+              whileHover={{ backgroundColor: view !== key ? 'rgba(0,0,0,0.02)' : undefined }}
               onClick={() => { setView(key); setSelectedDate(null); setSelected(null); }}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 text-body-sm font-medium transition-colors duration-150',
+                'relative flex items-center gap-1.5 px-4 py-2 text-body-sm font-medium transition-all duration-200',
                 view === key
                   ? 'bg-primary text-on-primary'
-                  : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
+                  : 'text-on-surface-variant hover:text-on-surface'
               )}
             >
               <Icon size={14} />
               <span className="hidden sm:inline">{label}</span>
-            </button>
+              <span className={cn(
+                'font-mono text-label-sm ml-0.5',
+                view === key ? 'text-on-primary/70' : 'text-on-surface-variant/50'
+              )}>
+                ({count})
+              </span>
+              {view === key && (
+                <motion.span
+                  layoutId="schedule-tab-indicator"
+                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-secondary rounded-t"
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                />
+              )}
+            </motion.button>
           ))}
         </div>
-      </div>
+      </motion.div>
 
       {/* ── Empty state ───────────────────────────────────────────── */}
       {!isLoading && activeSessions.length === 0 && (
-        <div className="empty-state py-20">
-          <div className="empty-state-icon">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="empty-state py-20"
+        >
+          <motion.div
+            animate={{ y: [0, -8, 0] }}
+            transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+            className="empty-state-icon"
+          >
             {view === 'registered' ? <CheckCircle2 size={28} /> : <BookmarkCheck size={28} />}
-          </div>
+          </motion.div>
           <h3 className="empty-state-title">
-            {view === 'registered' ? 'No registered sessions' : 'No bookmarked sessions'}
+            {view === 'registered' ? 'No registered sessions' : 'No saved sessions'}
           </h3>
           <p className="empty-state-body">
             {view === 'registered'
               ? 'Browse sessions and register to build your schedule.'
               : 'Bookmark sessions to save them for later.'}
           </p>
-        </div>
+        </motion.div>
       )}
 
       {/* ── Main schedule view ────────────────────────────────────── */}
@@ -417,15 +547,21 @@ export default function AttendeeSchedule() {
 
             {/* Day navigation */}
             {!isLoading && sortedDates.length > 0 && (
-              <div className="flex items-center justify-between gap-3">
-                <button
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center justify-between gap-3"
+              >
+                <motion.button
+                  whileHover={{ x: -2 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => setSelectedDate(sortedDates[dateIndex - 1])}
                   disabled={!hasPrevDate}
                   className="btn-ghost btn-sm gap-1 disabled:opacity-40"
                   aria-label="Previous day"
                 >
                   <ChevronLeft size={15} />
-                </button>
+                </motion.button>
 
                 {/* Date tabs */}
                 <div className="flex gap-1 overflow-x-auto scrollbar-hidden flex-1 justify-center">
@@ -433,16 +569,19 @@ export default function AttendeeSchedule() {
                     const d         = new Date(dateKey);
                     const isActive  = dateKey === activeDateKey;
                     const count     = groupedByDate[dateKey]?.length || 0;
+                    const isToday   = isSameDay(d, new Date());
 
                     return (
-                      <button
+                      <motion.button
                         key={dateKey}
+                        whileHover={{ y: -1 }}
+                        whileTap={{ y: 0 }}
                         onClick={() => setSelectedDate(dateKey)}
                         className={cn(
-                          'flex flex-col items-center gap-0.5 rounded px-3 py-2 shrink-0',
+                          'flex flex-col items-center gap-0.5 rounded-lg px-3 py-2 shrink-0 relative',
                           'transition-all duration-150',
                           isActive
-                            ? 'bg-primary text-on-primary'
+                            ? 'bg-primary text-on-primary shadow-sm'
                             : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
                         )}
                       >
@@ -455,25 +594,41 @@ export default function AttendeeSchedule() {
                         <span className="font-mono text-label-sm">
                           {count} session{count !== 1 ? 's' : ''}
                         </span>
-                      </button>
+                        {isToday && !isActive && (
+                          <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-secondary" />
+                        )}
+                        {isActive && (
+                          <motion.span
+                            layoutId="schedule-date-indicator"
+                            className="absolute bottom-0 left-2 right-2 h-0.5 bg-secondary rounded-t"
+                            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                          />
+                        )}
+                      </motion.button>
                     );
                   })}
                 </div>
 
-                <button
+                <motion.button
+                  whileHover={{ x: 2 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => setSelectedDate(sortedDates[dateIndex + 1])}
                   disabled={!hasNextDate}
                   className="btn-ghost btn-sm gap-1 disabled:opacity-40"
                   aria-label="Next day"
                 >
                   <ChevronRight size={15} />
-                </button>
-              </div>
+                </motion.button>
+              </motion.div>
             )}
 
             {/* Date heading */}
             {activeDateKey && !isLoading && (
-              <div className="flex items-center gap-2">
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-center gap-2"
+              >
                 <CalendarDays size={16} className="text-secondary" />
                 <h2 className="text-headline-sm font-semibold text-on-surface">
                   {format(new Date(activeDateKey), 'EEEE, MMMM d, yyyy')}
@@ -481,7 +636,7 @@ export default function AttendeeSchedule() {
                 <span className="font-mono text-label-sm text-on-surface-variant">
                   · {sessionsForDay.length} session{sessionsForDay.length !== 1 ? 's' : ''}
                 </span>
-              </div>
+              </motion.div>
             )}
 
             {/* Sessions list */}
@@ -489,11 +644,15 @@ export default function AttendeeSchedule() {
               {isLoading ? (
                 Array.from({ length: 4 }).map((_, i) => <AgendaRowSkeleton key={i} />)
               ) : sessionsForDay.length === 0 ? (
-                <div className="card py-8 text-center">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="card border-2 border-dashed py-10 text-center"
+                >
                   <p className="text-body-sm text-on-surface-variant">
-                    No {view === 'registered' ? 'registered' : 'bookmarked'} sessions on this day.
+                    No {view === 'registered' ? 'registered' : 'saved'} sessions on this day.
                   </p>
-                </div>
+                </motion.div>
               ) : (
                 <AnimatePresence mode="popLayout">
                   {sessionsForDay.map((session) => (

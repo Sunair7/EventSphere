@@ -145,6 +145,12 @@ UserSchema.virtual('isLocked').get(function () {
   return this.lockedUntil && this.lockedUntil > Date.now();
 });
 
+UserSchema.virtual('feedback', {
+  ref: 'Feedback',
+  localField: '_id',
+  foreignField: 'userId',
+});
+
 // ─── Pre-save Hooks ───────────────────────────────────────────────────────────
 // Hash password only when it has been modified (creation + explicit change)
 UserSchema.pre('save', async function (next) {

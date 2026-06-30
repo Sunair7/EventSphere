@@ -187,7 +187,6 @@ const SessionSchema = new mongoose.Schema(
     attendees: {
       type: [AttendeeRegistrationSchema],
       default: [],
-      select: false,
     },
 
     // Lightweight bookmark list — only user IDs, no sub-document overhead
@@ -286,6 +285,21 @@ SessionSchema.virtual("isLive").get(function () {
 
 SessionSchema.virtual('isPaidSession').get(function () {
   return this.price > 0;
+});
+
+SessionSchema.virtual('averageRating').get(async function () {
+  const Feedback = mongoose.model('Feedback');
+  const result = await Feedback.getAverageRating(this._id);
+  return result;
+});
+
+SessionSchema.virtual('feedbackCount').get(async function () {
+  const Feedback = mongoose.model('Feedback');
+  const count = await Feedback.countDocuments({
+    sessionId: this._id,
+    status: 'approved',
+  });
+  return count;
 });
 
 // ─── Pre-save: Date & Status Validation ───────────────────────────────────────

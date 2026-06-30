@@ -14,6 +14,8 @@ import { format, isPast, differenceInDays } from "date-fns";
 import toast from "react-hot-toast";
 import api from "@/utils/api";
 import { cn } from "@/utils/cn";
+import FeedbackStars from "@/components/feedback/FeedbackStars";
+import FeedbackForm from "@/components/feedback/FeedbackForm";
 
 // ─── Animated Counter ─────────────────────────────────────────────────────────
 function CountUp({ end, duration = 1.2 }) {
@@ -46,6 +48,7 @@ const expoKey = (id) => ["expos", "attendee", id];
 const sessionsKey = (id) => ["sessions", "expo", id, "attendee", "preview"];
 const myRegKey = ["sessions", "me", "registrations"];
 const myBmkKey = ["sessions", "me", "bookmarks"];
+const feedbackKey = (sessionId) => ["feedback", "session", sessionId];
 
 // ─── Format badge ─────────────────────────────────────────────────────────────
 const FORMAT_BADGE = {
@@ -152,49 +155,122 @@ function ExpoBannerHero({ banner, title, status, startDate, theme }) {
 }
 
 // ─── Session preview card ─────────────────────────────────────────────────────
-function SessionPreviewCard({ session, isRegistered, isBookmarked, onRegister, onUnregister, onBookmark, isMutating, index }) {
+function SessionPreviewCard({ 
+  session, 
+  isRegistered, 
+  isBookmarked, 
+  onRegister, 
+  onUnregister, 
+  onBookmark, 
+  isMutating, 
+  index,
+  onFeedbackSubmit 
+}) {
   const isLive = session.status === "live";
   const isFull = session.maxCapacity && (session.attendeeCount ?? 0) >= session.maxCapacity;
   const isPastSes = isPast(new Date(session.endTime)) && !isLive;
+  const [showFeedbackForm, setShowFeedbackForm] = useState(false);
+  const [selectedFeedback, setSelectedFeedback] = useState(null);
+
+  // Fetch feedback data for completed sessions
+  const { data: feedbackData, refetch: refetchFeedback } = useQuery({
+    queryKey: feedbackKey(session._id),
+    queryFn: async () => {
+      const { data } = await api.get(`/feedback/session/${session._id}`);
+      return data.data;
+    },
+    enabled: session.status === "completed",
+  });
+
+  const avgRating = feedbackData?.stats?.average || 0;
+  const totalReviews = feedbackData?.stats?.total || 0;
+
+  const handleFeedbackSuccess = () => {
+    refetchFeedback();
+    setShowFeedbackForm(false);
+    setSelectedFeedback(null);
+    onFeedbackSubmit?.();
+  };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.04, duration: 0.25 }} whileHover={{ y: -3 }}
-      className={cn("card flex flex-col gap-3 transition-all duration-200 hover:shadow-level-2", isLive && "border-success/30 bg-success-container/5", isPastSes && "opacity-60")}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className={cn("badge text-label-sm", FORMAT_BADGE[session.format] || "badge-neutral")}>{session.format}</span>
-          {isLive && <span className="badge badge-success gap-1 text-label-sm"><motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="h-1.5 w-1.5 rounded-full bg-success" />Live</span>}
-          {isFull && !isRegistered && !isPastSes && <span className="badge badge-warning text-label-sm">Full</span>}
+    <>
+      <motion.div
+        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: index * 0.04, duration: 0.25 }} whileHover={{ y: -3 }}
+        className={cn("card flex flex-col gap-3 transition-all duration-200 hover:shadow-level-2", isLive && "border-success/30 bg-success-container/5", isPastSes && "opacity-60")}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className={cn("badge text-label-sm", FORMAT_BADGE[session.format] || "badge-neutral")}>{session.format}</span>
+            {isLive && <span className="badge badge-success gap-1 text-label-sm"><motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="h-1.5 w-1.5 rounded-full bg-success" />Live</span>}
+            {isFull && !isRegistered && !isPastSes && <span className="badge badge-warning text-label-sm">Full</span>}
+          </div>
+          <motion.button whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onClick={onBookmark} disabled={isMutating}
+            className={cn("rounded-lg p-1 transition-colors shrink-0", isBookmarked ? "text-tertiary bg-tertiary-container/30" : "text-on-surface-variant hover:text-tertiary hover:bg-surface-container")}
+            aria-label={isBookmarked ? "Remove bookmark" : "Bookmark"}>
+            {isBookmarked ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
+          </motion.button>
         </div>
-        <motion.button whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onClick={onBookmark} disabled={isMutating}
-          className={cn("rounded-lg p-1 transition-colors shrink-0", isBookmarked ? "text-tertiary bg-tertiary-container/30" : "text-on-surface-variant hover:text-tertiary hover:bg-surface-container")}
-          aria-label={isBookmarked ? "Remove bookmark" : "Bookmark"}>
-          {isBookmarked ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
-        </motion.button>
-      </div>
-      <h4 className="text-body-sm font-semibold text-on-surface line-clamp-2 leading-snug">{session.title}</h4>
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-1 font-mono text-label-sm text-on-surface-variant"><Clock size={11} className="shrink-0" /><span>{format(new Date(session.startTime), "MMM d, HH:mm")} — {format(new Date(session.endTime), "HH:mm")}</span></div>
-        <div className="flex items-center gap-1 font-mono text-label-sm text-on-surface-variant"><MapPin size={11} className="shrink-0" /><span className="line-clamp-1">{session.location}</span></div>
-      </div>
-      {session.speakers?.length > 0 && (
-        <div className="flex items-center gap-1 font-mono text-label-sm text-on-surface-variant"><Mic2 size={11} className="shrink-0" /><span className="line-clamp-1">{session.speakers[0].name}{session.speakers.length > 1 && ` +${session.speakers.length - 1}`}</span></div>
-      )}
-      {!isPastSes && session.status !== "cancelled" && (isRegistered ? (
-        <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} onClick={onUnregister} disabled={isMutating}
-          className="flex items-center justify-center gap-1.5 rounded-lg border border-success bg-success-container/30 px-3 py-2 text-body-sm font-medium text-on-success-container hover:bg-error-container/20 hover:border-error hover:text-on-error-container transition-all duration-200 mt-1">
-          <CheckCircle2 size={14} /> Registered
-        </motion.button>
-      ) : (
-        <motion.button whileHover={!isFull ? { scale: 1.01 } : {}} whileTap={!isFull ? { scale: 0.99 } : {}} onClick={onRegister} disabled={isFull || isMutating}
-          className={cn("flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-body-sm font-medium transition-all mt-1", !isFull ? "btn-secondary" : "border border-outline-variant text-on-surface-variant cursor-not-allowed")}>
-          {isFull ? "Session Full" : isMutating ? "Registering…" : "Register Now"}
-        </motion.button>
-      ))}
-    </motion.div>
+        <h4 className="text-body-sm font-semibold text-on-surface line-clamp-2 leading-snug">{session.title}</h4>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1 font-mono text-label-sm text-on-surface-variant"><Clock size={11} className="shrink-0" /><span>{format(new Date(session.startTime), "MMM d, HH:mm")} — {format(new Date(session.endTime), "HH:mm")}</span></div>
+          <div className="flex items-center gap-1 font-mono text-label-sm text-on-surface-variant"><MapPin size={11} className="shrink-0" /><span className="line-clamp-1">{session.location}</span></div>
+        </div>
+        {session.speakers?.length > 0 && (
+          <div className="flex items-center gap-1 font-mono text-label-sm text-on-surface-variant"><Mic2 size={11} className="shrink-0" /><span className="line-clamp-1">{session.speakers[0].name}{session.speakers.length > 1 && ` +${session.speakers.length - 1}`}</span></div>
+        )}
+
+        {/* Feedback display for completed sessions */}
+        {session.status === "completed" && (
+          <div className="mt-1 flex items-center gap-3">
+            {totalReviews > 0 ? (
+              <button 
+                onClick={() => setShowFeedbackForm(true)}
+                className="flex items-center gap-1 hover:opacity-80 transition-opacity"
+              >
+                <FeedbackStars rating={avgRating} size="sm" readonly />
+                <span className="font-mono text-label-sm text-on-surface-variant">
+                  ({totalReviews})
+                </span>
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowFeedbackForm(true)}
+                className="font-mono text-label-sm text-tertiary hover:text-secondary transition-colors flex items-center gap-1"
+              >
+                <Star size={12} />
+                Leave feedback
+              </button>
+            )}
+          </div>
+        )}
+
+        {!isPastSes && session.status !== "cancelled" && (isRegistered ? (
+          <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} onClick={onUnregister} disabled={isMutating}
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-success bg-success-container/30 px-3 py-2 text-body-sm font-medium text-on-success-container hover:bg-error-container/20 hover:border-error hover:text-on-error-container transition-all duration-200 mt-1">
+            <CheckCircle2 size={14} /> Registered
+          </motion.button>
+        ) : (
+          <motion.button whileHover={!isFull ? { scale: 1.01 } : {}} whileTap={!isFull ? { scale: 0.99 } : {}} onClick={onRegister} disabled={isFull || isMutating}
+            className={cn("flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-body-sm font-medium transition-all mt-1", !isFull ? "btn-secondary" : "border border-outline-variant text-on-surface-variant cursor-not-allowed")}>
+            {isFull ? "Session Full" : isMutating ? "Registering…" : "Register Now"}
+          </motion.button>
+        ))}
+      </motion.div>
+
+      {/* Feedback Form Modal */}
+      <FeedbackForm
+        isOpen={showFeedbackForm}
+        onClose={() => {
+          setShowFeedbackForm(false);
+          setSelectedFeedback(null);
+        }}
+        sessionId={session._id}
+        sessionTitle={session.title}
+        existingFeedback={selectedFeedback}
+        onSuccess={handleFeedbackSuccess}
+      />
+    </>
   );
 }
 
@@ -400,9 +476,20 @@ export default function AttendeeExpoDetail() {
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {sessions.map((session, i) => (
-                <SessionPreviewCard key={session._id} session={session} index={i} isRegistered={registeredIds.has(session._id)} isBookmarked={bookmarkedIds.has(session._id)}
-                  isMutating={mutatingId === session._id} onRegister={() => handleAction(session._id, "register")}
-                  onUnregister={() => handleAction(session._id, "unregister")} onBookmark={() => handleAction(session._id, "bookmark")} />
+                <SessionPreviewCard 
+                  key={session._id} 
+                  session={session} 
+                  index={i} 
+                  isRegistered={registeredIds.has(session._id)} 
+                  isBookmarked={bookmarkedIds.has(session._id)}
+                  isMutating={mutatingId === session._id} 
+                  onRegister={() => handleAction(session._id, "register")}
+                  onUnregister={() => handleAction(session._id, "unregister")} 
+                  onBookmark={() => handleAction(session._id, "bookmark")}
+                  onFeedbackSubmit={() => {
+                    queryClient.invalidateQueries({ queryKey: feedbackKey(session._id) });
+                  }}
+                />
               ))}
             </div>
           )}

@@ -9,7 +9,7 @@ import {
   CheckCircle2, Clock, AlertCircle, RefreshCw,
   ExternalLink, Tag, Globe, Lock, Image,
   Upload, X, Loader2, ChevronLeft, ChevronRight,
-  Sparkles,
+  Sparkles, DollarSign,
 } from 'lucide-react';
 import { format }                               from 'date-fns';
 import toast                                    from 'react-hot-toast';
@@ -29,6 +29,16 @@ const STATUS_BADGE = {
   completed: 'badge-neutral',
   cancelled: 'badge-error',
 };
+
+// ─── Field component for metadata display ─────────────────────────────────────
+function Field({ label, value, icon: Icon, className }) {
+  return (
+    <div className={cn("flex items-center gap-2 text-body-sm text-on-surface-variant", className)}>
+      <Icon size={15} className="text-secondary shrink-0" />
+      <span>{value}</span>
+    </div>
+  );
+}
 
 // ─── Skeletons ────────────────────────────────────────────────────────────────
 function StatSkeleton() {
@@ -510,6 +520,11 @@ export default function AdminExpoDetail() {
   const sessions   = sessionsData?.sessions || [];
   const boothStats = stats?.booths          || {};
 
+  // Format booth price for display
+  const formattedBoothPrice = expo?.boothPrice > 0 
+    ? `$${(expo.boothPrice / 100).toFixed(2)} ${expo.boothCurrency || 'USD'}` 
+    : 'Free';
+
   return (
     <>
       <div className="flex flex-col gap-6">
@@ -644,33 +659,37 @@ export default function AdminExpoDetail() {
               </p>
             )}
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="flex items-center gap-2 text-body-sm text-on-surface-variant">
-                <CalendarDays size={15} className="text-secondary shrink-0" />
-                <span>
-                  {format(new Date(expo.startDate), 'MMM d')} —{' '}
-                  {format(new Date(expo.endDate), 'MMM d, yyyy')}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-body-sm text-on-surface-variant">
-                <MapPin size={15} className="text-secondary shrink-0" />
-                <span className="truncate">
-                  {expo.address?.venue
-                    ? `${expo.address.venue}, ${expo.address.city}`
-                    : `${expo.address?.city}, ${expo.address?.country}`}
-                </span>
-              </div>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <Field 
+                label="Dates" 
+                value={`${format(new Date(expo.startDate), 'MMM d')} — ${format(new Date(expo.endDate), 'MMM d, yyyy')}`}
+                icon={CalendarDays} 
+              />
+              <Field 
+                label="Venue" 
+                value={expo.address?.venue
+                  ? `${expo.address.venue}, ${expo.address.city}`
+                  : `${expo.address?.city}, ${expo.address?.country}`}
+                icon={MapPin} 
+              />
+              <Field 
+                label="Booth Price" 
+                value={formattedBoothPrice}
+                icon={DollarSign} 
+              />
               {expo.theme && (
-                <div className="flex items-center gap-2 text-body-sm text-on-surface-variant">
-                  <Globe size={15} className="text-secondary shrink-0" />
-                  <span>{expo.theme}</span>
-                </div>
+                <Field 
+                  label="Theme" 
+                  value={expo.theme}
+                  icon={Globe} 
+                />
               )}
               {expo.maxAttendees && (
-                <div className="flex items-center gap-2 text-body-sm text-on-surface-variant">
-                  <Users size={15} className="text-secondary shrink-0" />
-                  <span>Max {expo.maxAttendees.toLocaleString()} attendees</span>
-                </div>
+                <Field 
+                  label="Max Attendees" 
+                  value={expo.maxAttendees.toLocaleString()}
+                  icon={Users} 
+                />
               )}
             </div>
 

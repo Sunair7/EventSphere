@@ -1,6 +1,6 @@
 import { useMemo, useRef, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, useInView } from "framer-motion";
 import {
   Building2,
@@ -29,7 +29,8 @@ import toast from "react-hot-toast";
 import api from "@/utils/api";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/utils/cn";
-import { useBooth } from "@/hooks/useBooth"; // ✅ ADD THIS
+import { useBooth } from "@/hooks/useBooth";
+import FeedbackStars from "@/components/feedback/FeedbackStars"; // Adjust import path as needed
 
 // ─── Animated Counter ─────────────────────────────────────────────────────────
 function CountUp({ end, duration = 1.2 }) {
@@ -383,7 +384,6 @@ function AssignedBoothCard({ booth, index, onCancel }) {
         >
           <LayoutGrid size={13} /> Map
         </Link>
-        {/* ✅ Cancel button */}
         <button
           onClick={() => onCancel(boothData?._id || booth.boothId)}
           className="btn-ghost btn-sm gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-error hover:bg-error-container"
@@ -488,6 +488,26 @@ function QuickAction({ icon: Icon, label, to, description, delay }) {
   );
 }
 
+// ─── Feedback item card ───────────────────────────────────────────────────────
+function FeedbackItem({ feedback }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      whileHover={{ x: 3 }}
+      className="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-bright px-4 py-3 hover:shadow-sm hover:border-secondary/30 transition-all duration-200"
+    >
+      <FeedbackStars rating={feedback.rating} size="sm" readonly />
+      <p className="text-body-sm text-on-surface flex-1 line-clamp-1">
+        {feedback.comment || "No comment provided."}
+      </p>
+      <span className="font-mono text-label-sm text-on-surface-variant shrink-0">
+        {feedback.sessionId?.title || "Session"}
+      </span>
+    </motion.div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function ExhibitorDashboard() {
   const { user } = useAuth();
@@ -498,10 +518,19 @@ export default function ExhibitorDashboard() {
   } = useMyProfile();
   const { data: sessions = [], isLoading: sessionsLoading } =
     useMyRegistrations();
-  const { cancelBoothReservation } = useBooth(); // ✅ ADD THIS
+  const { cancelBoothReservation } = useBooth();
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [selectedBoothId, setSelectedBoothId] = useState(null);
   const [isCancelling, setIsCancelling] = useState(false);
+
+  // Inside the component, add this useEffect:
+  const queryClient = useQueryClient();
+
+  // useEffect(() => {
+  //   // Clear cache on mount to prevent stale data
+  //   queryClient.removeQueries({ queryKey: ["exhibitor", "profile", "me"] });
+  //   queryClient.removeQueries({ queryKey: ["feedback", "exhibitor", "stats"] });
+  // }, []);
 
   // Fetch sessions where the exhibitor is a speaker
   const { data: speakingSessions = [] } = useQuery({
@@ -509,6 +538,18 @@ export default function ExhibitorDashboard() {
     queryFn: async () => {
       const { data } = await api.get("/sessions/me/speaking");
       return data.data.sessions;
+    },
+    enabled: !!user?._id,
+  });
+
+  // Fetch exhibitor feedback stats
+  const { data: exhibitorFeedbackData } = useQuery({
+    queryKey: ["feedback", "exhibitor", "stats"],
+    queryFn: async () => {
+      const { data } = await api.get(
+        "/feedback/exhibitor/sessions?status=approved&limit=100",
+      );
+      return data.data;
     },
     enabled: !!user?._id,
   });
@@ -521,8 +562,25 @@ export default function ExhibitorDashboard() {
     [sessions],
   );
 
+  // Calculate feedback stats
+  const feedbackStats = useMemo(() => {
+    const allFeedback = exhibitorFeedbackData?.feedback || [];
+    if (allFeedback.length === 0) return null;
+
+    const total = allFeedback.length;
+    const avg = allFeedback.reduce((sum, f) => sum + f.rating, 0) / total;
+    const distribution = {};
+    allFeedback.forEach((f) => {
+      distribution[f.rating] = (distribution[f.rating] || 0) + 1;
+    });
+
+    return { total, average: avg.toFixed(1), distribution };
+  }, [exhibitorFeedbackData]);
+
   // Get assigned booths from profile
-  const assignedBooths = profile?.assignedBooths || [];
+  const assignedBooths = (profile?.assignedBooths || []).filter(
+    (booth) => booth.boothId !== null && booth.boothId !== undefined,
+  );
 
   const handleCancelBooth = (boothId) => {
     if (!boothId) {
@@ -580,7 +638,7 @@ export default function ExhibitorDashboard() {
 
       <ApplicationStatusCard profile={profile} isLoading={profileLoading} />
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <StatCard
           icon={LayoutGrid}
           iconBg="bg-primary-container"
@@ -608,6 +666,17 @@ export default function ExhibitorDashboard() {
           to="/exhibitor/profile"
           delay={0.1}
         />
+        {feedbackStats && (
+          <StatCard
+            icon={Star}
+            iconBg="bg-warning-container"
+            iconFg="text-on-warning-container"
+            label="Average Rating"
+            value={parseFloat(feedbackStats.average)}
+            to="/exhibitor/sessions"
+            delay={0.15}
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -696,7 +765,7 @@ export default function ExhibitorDashboard() {
                   key={i}
                   booth={booth}
                   index={i}
-                  onCancel={handleCancelBooth} // ✅ PASS THE HANDLER
+                  onCancel={handleCancelBooth}
                 />
               ))}
               {assignedBooths.length > 4 && (
@@ -788,6 +857,39 @@ export default function ExhibitorDashboard() {
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {speakingSessions.slice(0, 4).map((session, i) => (
               <SessionCard key={session._id} session={session} index={i} />
+            ))}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Recent Feedback */}
+      {exhibitorFeedbackData?.feedback?.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="flex flex-col gap-3"
+        >
+          <div className="flex items-center justify-between">
+            <h2 className="text-headline-sm font-semibold text-on-surface flex items-center gap-2">
+              <Star size={16} className="text-warning fill-warning" />
+              Recent Feedback
+            </h2>
+            <Link
+              to="/exhibitor/sessions"
+              className="btn-tertiary btn-sm gap-1 group/link"
+            >
+              View All
+              <ArrowRight
+                size={13}
+                className="transition-transform group-hover/link:translate-x-0.5"
+              />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2">
+            {exhibitorFeedbackData.feedback.slice(0, 3).map((item) => (
+              <FeedbackItem key={item._id} feedback={item} />
             ))}
           </div>
         </motion.div>

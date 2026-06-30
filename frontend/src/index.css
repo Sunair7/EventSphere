@@ -627,3 +627,25 @@
 .text-error[role="alert"] {
   animation: fadeInUp 0.2s ease-out;
 }
+
+/* Tutorial highlight - single clean definition */
+.tutorial-highlight {
+  position: relative !important;
+  z-index: 99997 !important;
+  outline: 3px solid #006a61 !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 0 6px rgba(0, 106, 97, 0.3), 0 0 30px rgba(0, 106, 97, 0.5) !important;
+  border-radius: 8px;
+  animation: tutorial-pulse 2s infinite;
+}
+
+@keyframes tutorial-pulse {
+  0%, 100% { 
+    outline-color: #006a61;
+    box-shadow: 0 0 0 6px rgba(0, 106, 97, 0.3), 0 0 30px rgba(0, 106, 97, 0.5);
+  }
+  50% { 
+    outline-color: #0d9488;
+    box-shadow: 0 0 0 10px rgba(0, 106, 97, 0.15), 0 0 50px rgba(0, 106, 97, 0.3);
+  }
+}

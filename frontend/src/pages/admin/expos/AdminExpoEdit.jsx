@@ -9,6 +9,7 @@ import {
   ArrowLeft, Save, CalendarDays,
   MapPin, Info, Tag, X, Plus,
   AlertCircle, Image, Upload, Loader2, Trash2,
+  DollarSign,
 } from 'lucide-react';
 import toast                               from 'react-hot-toast';
 import api                                 from '@/utils/api';
@@ -38,6 +39,11 @@ const editExpoSchema = z
     'address.country': z.string().min(1, 'Country is required.').max(100),
     'address.street':  z.string().max(200).optional().or(z.literal('')),
     'address.zipCode': z.string().max(20).optional().or(z.literal('')),
+
+    boothPrice: z
+      .number({ invalid_type_error: 'Booth price must be a number.' })
+      .min(0, 'Price cannot be negative.')
+      .optional(),
 
     maxAttendees: z
       .number({ invalid_type_error: 'Must be a number.' })
@@ -361,6 +367,7 @@ export default function AdminExpoEdit() {
       'address.country':  expo.address?.country || '',
       'address.street':   expo.address?.street  || '',
       'address.zipCode':  expo.address?.zipCode || '',
+      boothPrice:         expo.boothPrice        || 0,
       maxAttendees:       expo.maxAttendees      || null,
       isPublic:           expo.isPublic          !== false,
       'banner.url':       expo.banner?.url       || '',
@@ -400,6 +407,7 @@ export default function AdminExpoEdit() {
           street:  values['address.street']  || undefined,
           zipCode: values['address.zipCode'] || undefined,
         },
+        boothPrice: values.boothPrice !== undefined ? Number(values.boothPrice) : 0,
         tags,
         maxAttendees: values.maxAttendees || null,
         isPublic:     values.isPublic,
@@ -551,6 +559,46 @@ export default function AdminExpoEdit() {
               <input id="regDeadline" type="datetime-local" {...register('registrationDeadline')}
                 className={cn('input', errors.registrationDeadline && 'input-error')} />
             </Field>
+          </div>
+
+          {/* ── Booth Pricing ────────────────────────────────────── */}
+          <div className="space-y-2">
+            <h3 className="text-body-sm font-semibold text-on-surface flex items-center gap-2">
+              <DollarSign size={16} className="text-secondary" />
+              Booth Pricing
+            </h3>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {/* Booth Price */}
+              <Field 
+                label="Booth Price"
+                hint="Set to 0 for free booths. This price applies to all booths in this expo."
+                htmlFor="boothPrice" 
+                error={errors.boothPrice?.message}
+              >
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant font-mono text-label-sm">
+                    $
+                  </span>
+                  <input
+                    type="number"
+                    id="boothPrice"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    {...register('boothPrice', { valueAsNumber: true })}
+                    className={cn('input pl-8', errors.boothPrice && 'input-error')}
+                  />
+                </div>
+              </Field>
+
+              {/* Currency */}
+              <Field label="Currency" hint="Currently only USD is supported.">
+                <div className="input bg-surface-container text-on-surface font-mono flex items-center">
+                  USD
+                </div>
+              </Field>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

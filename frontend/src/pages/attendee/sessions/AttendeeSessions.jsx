@@ -21,17 +21,18 @@ import {
   Filter,
   Sparkles,
   Star,
-  Zap,
-  Tag,
   Loader2,
 } from "lucide-react";
-import { format, isPast, isFuture } from "date-fns";
+import { format, isPast } from "date-fns";
 import toast from "react-hot-toast";
 import api from "@/utils/api";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/utils/cn";
-import { usePayment } from "@/hooks/usePayment"; // ✅ ADD THIS
-import PaymentModal from "@/components/payment/PaymentModal"; // ✅ ADD THIS
+import { usePayment } from "@/hooks/usePayment";
+import PaymentModal from "@/components/payment/PaymentModal";
+import FeedbackForm from "@/components/feedback/FeedbackForm";
+import FeedbackStars from "@/components/feedback/FeedbackStars";
+import FeedbackList from "@/components/feedback/FeedbackList";
 
 // ─── Animated Counter ─────────────────────────────────────────────────────────
 function CountUp({ end, duration = 1 }) {
@@ -66,6 +67,8 @@ const sessionKeys = {
   myBookmarks: () => ["sessions", "me", "bookmarks"],
   expoList: () => ["expos", "published"],
 };
+
+const feedbackKey = (sessionId) => ["feedback", "session", sessionId];
 
 // ─── Format config ────────────────────────────────────────────────────────────
 const FORMAT_TABS = [
@@ -110,7 +113,7 @@ function SessionCardSkeleton() {
   );
 }
 
-// ─── Session card ─────────────────────────────────────────────────────────────
+// ─── Session card (Attendee View) ─────────────────────────────────────────────
 function SessionCard({
   session,
   isRegistered,
@@ -120,35 +123,61 @@ function SessionCard({
   onBookmark,
   isMutating,
   index,
+  expoId,
 }) {
-  const { createSessionPayment, showPaymentModal, transaction, setShowPaymentModal } = usePayment();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const {
+    createSessionPayment,
+    showPaymentModal,
+    transaction,
+    setShowPaymentModal,
+  } = usePayment();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showFeedbackForm, setShowFeedbackForm] = useState(false);
+  const [selectedFeedback, setSelectedFeedback] = useState(null);
+
   const isLive = session.status === "live";
   const isFull =
     session.maxCapacity && session.attendeeCount >= session.maxCapacity;
-  const isPastSes = isPast(new Date(session.endTime)) && !isLive;
+  const isPastSes =
+    session.status === "completed" ||
+    (isPast(new Date(session.endTime)) && !isLive);
   const canRegister =
     !isRegistered && !isFull && !isPastSes && session.status !== "cancelled";
+
+  const { data: feedbackData } = useQuery({
+    queryKey: feedbackKey(session._id),
+    queryFn: async () => {
+      const { data } = await api.get(`/feedback/session/${session._id}`);
+      return data.data;
+    },
+    enabled: isPastSes && isRegistered,
+  });
+
+  const userFeedback = feedbackData?.feedback?.find(
+    (f) => f.userId?._id === user?._id && f.status !== "rejected",
+  );
+
+  const averageRating = session.averageRating || 0;
+  const feedbackCount = session.feedbackCount || 0;
 
   const handleRegister = async () => {
     if (isProcessing) return;
     setIsProcessing(true);
-    
-    // Check if session requires payment
+
     if (session.price > 0) {
       try {
         await createSessionPayment.mutateAsync({
           sessionId: session._id,
-          paymentMethod: 'mock',
+          paymentMethod: "mock",
         });
       } catch (error) {
-        // Error handled by mutation
-        console.error('Registration failed:', error);
+        console.error("Registration failed:", error);
       } finally {
         setIsProcessing(false);
       }
     } else {
-      // Free session - register directly
       await onRegister();
       setIsProcessing(false);
     }
@@ -180,7 +209,11 @@ function SessionCard({
             <motion.span
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
-              transition={{ type: "spring", stiffness: 300, delay: index * 0.04 }}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                delay: index * 0.04,
+              }}
               className={cn(
                 "badge text-label-sm",
                 FORMAT_BADGE[session.format] || "badge-neutral",
@@ -281,79 +314,172 @@ function SessionCard({
           </div>
         )}
 
-        {/* Actions */}
-        <div className="flex items-center gap-2 mt-1">
-          {isPastSes || session.status === "cancelled" ? (
-            <div
-              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-outline-variant
-                            px-3 py-2 text-body-sm text-on-surface-variant bg-surface-container"
-            >
-              {isPastSes ? "Session ended" : "Cancelled"}
+        {/* Average Rating */}
+        {averageRating > 0 && (
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <div className="flex items-center gap-0.5">
+              <Star size={13} className="fill-warning text-warning" />
+              <span className="font-mono text-label-sm font-semibold text-on-surface">
+                {averageRating.toFixed(1)}
+              </span>
             </div>
-          ) : isRegistered ? (
-            <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              onClick={onUnregister}
-              disabled={isMutating}
-              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border
-                         border-success bg-success-container/30 px-3 py-2 text-body-sm
-                         font-medium text-on-success-container hover:bg-error-container/30
-                         hover:border-error hover:text-on-error-container transition-all duration-200"
-            >
-              <CheckCircle2 size={14} />
-              {isMutating ? "Processing…" : "Registered"}
-            </motion.button>
-          ) : (
-            <motion.button
-              whileHover={canRegister ? { scale: 1.01 } : {}}
-              whileTap={canRegister ? { scale: 0.99 } : {}}
-              onClick={handleRegister}
-              disabled={!canRegister || isMutating || isProcessing}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2",
-                "text-body-sm font-medium transition-all duration-200",
-                canRegister
-                  ? "btn-secondary"
-                  : "border border-outline-variant text-on-surface-variant cursor-not-allowed bg-surface-container",
-              )}
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 size={14} className="animate-spin-slow" />
-                  Processing…
-                </>
-              ) : isMutating ? (
-                "Processing…"
-              ) : isFull ? (
-                "Session Full"
-              ) : session.price > 0 ? (
-                `Register $${(session.price / 100).toFixed(2)}`
-              ) : (
-                "Register Now"
-              )}
-            </motion.button>
-          )}
+            <span className="font-mono text-label-sm text-on-surface-variant">
+              ({feedbackCount || 0} {feedbackCount === 1 ? "review" : "reviews"}
+              )
+            </span>
+          </div>
+        )}
 
-          {/* Bookmark */}
-          <motion.button
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.92 }}
-            onClick={onBookmark}
-            disabled={isMutating}
-            className={cn(
-              "rounded-lg border p-2 transition-all duration-200",
-              isBookmarked
-                ? "border-tertiary bg-tertiary-container/30 text-tertiary"
-                : "border-outline-variant text-on-surface-variant hover:border-tertiary hover:bg-tertiary-container/20 hover:text-tertiary",
-            )}
-            aria-label={isBookmarked ? "Remove bookmark" : "Bookmark session"}
-            title={isBookmarked ? "Remove bookmark" : "Bookmark session"}
-          >
-            {isBookmarked ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
-          </motion.button>
+        {/* ✅ Actions - Stacked vertically */}
+        <div className="flex flex-col gap-2 mt-auto">
+          {isPastSes || session.status === "cancelled" ? (
+            <>
+              {/* Session ended / Cancelled badge */}
+              <div className="flex items-center justify-center gap-1.5 rounded-lg border border-outline-variant px-3 py-2.5 text-body-sm text-on-surface-variant bg-surface-container w-full">
+                {isPastSes ? "Session ended" : "Cancelled"}
+              </div>
+
+              {/* Feedback button for completed sessions */}
+              {isPastSes && isRegistered && (
+                <motion.button
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                  onClick={() => {
+                    if (userFeedback) {
+                      setSelectedFeedback(userFeedback);
+                    }
+                    setShowFeedbackForm(true);
+                  }}
+                  className="flex items-center justify-center gap-2 rounded-lg border border-outline-variant px-3 py-2.5 text-body-sm font-medium text-on-surface hover:bg-surface-container hover:border-secondary/30 transition-all duration-200 w-full"
+                >
+                  {userFeedback ? (
+                    <>
+                      <Star size={14} className="fill-warning text-warning" />
+                      {userFeedback.status === "pending"
+                        ? "Feedback Pending"
+                        : "Edit Your Feedback"}
+                    </>
+                  ) : (
+                    <>
+                      <Star size={14} className="text-on-surface-variant" />
+                      Leave Feedback
+                    </>
+                  )}
+                </motion.button>
+              )}
+            </>
+          ) : isRegistered ? (
+            /* Unregister button */
+            <div className="flex items-center gap-2">
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                onClick={onUnregister}
+                disabled={isMutating}
+                className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-success bg-success-container/30 px-3 py-2.5 text-body-sm font-medium text-on-success-container hover:bg-error-container/30 hover:border-error hover:text-on-error-container transition-all duration-200"
+              >
+                <CheckCircle2 size={14} />
+                {isMutating ? "Processing…" : "Registered"}
+              </motion.button>
+
+              {/* Bookmark button next to unregister */}
+              <motion.button
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.92 }}
+                onClick={onBookmark}
+                disabled={isMutating}
+                className={cn(
+                  "rounded-lg border p-2.5 transition-all duration-200 shrink-0",
+                  isBookmarked
+                    ? "border-tertiary bg-tertiary-container/30 text-tertiary"
+                    : "border-outline-variant text-on-surface-variant hover:border-tertiary hover:bg-tertiary-container/20 hover:text-tertiary",
+                )}
+                aria-label={
+                  isBookmarked ? "Remove bookmark" : "Bookmark session"
+                }
+                title={isBookmarked ? "Remove bookmark" : "Bookmark session"}
+              >
+                {isBookmarked ? (
+                  <BookmarkCheck size={16} />
+                ) : (
+                  <Bookmark size={16} />
+                )}
+              </motion.button>
+            </div>
+          ) : (
+            /* Register button */
+            <div className="flex items-center gap-2">
+              <motion.button
+                whileHover={canRegister ? { scale: 1.01 } : {}}
+                whileTap={canRegister ? { scale: 0.99 } : {}}
+                onClick={handleRegister}
+                disabled={!canRegister || isMutating || isProcessing}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2.5",
+                  "text-body-sm font-medium transition-all duration-200",
+                  canRegister
+                    ? "btn-secondary"
+                    : "border border-outline-variant text-on-surface-variant cursor-not-allowed bg-surface-container",
+                )}
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin-slow" />
+                    Processing…
+                  </>
+                ) : isMutating ? (
+                  "Processing…"
+                ) : isFull ? (
+                  "Session Full"
+                ) : session.price > 0 ? (
+                  `Register $${(session.price / 100).toFixed(2)}`
+                ) : (
+                  "Register Now"
+                )}
+              </motion.button>
+
+              {/* Bookmark button next to register */}
+              <motion.button
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.92 }}
+                onClick={onBookmark}
+                disabled={isMutating}
+                className={cn(
+                  "rounded-lg border p-2.5 transition-all duration-200 shrink-0",
+                  isBookmarked
+                    ? "border-tertiary bg-tertiary-container/30 text-tertiary"
+                    : "border-outline-variant text-on-surface-variant hover:border-tertiary hover:bg-tertiary-container/20 hover:text-tertiary",
+                )}
+                aria-label={
+                  isBookmarked ? "Remove bookmark" : "Bookmark session"
+                }
+                title={isBookmarked ? "Remove bookmark" : "Bookmark session"}
+              >
+                {isBookmarked ? (
+                  <BookmarkCheck size={16} />
+                ) : (
+                  <Bookmark size={16} />
+                )}
+              </motion.button>
+            </div>
+          )}
         </div>
       </motion.div>
+
+      {/* Feedback Form Modal */}
+      <FeedbackForm
+        isOpen={showFeedbackForm}
+        onClose={() => {
+          setShowFeedbackForm(false);
+          setSelectedFeedback(null);
+        }}
+        sessionId={session._id}
+        sessionTitle={session.title}
+        existingFeedback={selectedFeedback}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: feedbackKey(session._id) });
+        }}
+      />
 
       {/* Payment Modal */}
       {showPaymentModal && transaction && (
@@ -368,8 +494,9 @@ function SessionCard({
           expiresAt={transaction.expiresAt}
           onSuccess={() => {
             setShowPaymentModal(false);
-            // Refresh sessions
-            queryClient.invalidateQueries({ queryKey: sessionKeys.list({ expoId }) });
+            queryClient.invalidateQueries({
+              queryKey: sessionKeys.list({ expoId }),
+            });
           }}
           onCancel={() => {
             setShowPaymentModal(false);
@@ -380,12 +507,216 @@ function SessionCard({
   );
 }
 
+// ─── Exhibitor Session Card (Exhibitor / Speaker View) ───────────────────────
+function ExhibitorSessionCard({ session, feedback, onViewFeedback, index }) {
+  const isLive = session.status === "live";
+  const past = session.endTime ? isPast(new Date(session.endTime)) : false;
+  const avg = feedback?.average ? parseFloat(feedback.average) : 0;
+  const count = feedback?.count || 0;
+
+  // ✅ Safe date formatting with fallback
+  const formatSafe = (date, formatStr) => {
+    if (!date) return "—";
+    try {
+      return format(new Date(date), formatStr);
+    } catch {
+      return "—";
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.05 }}
+      whileHover={{ x: 3 }}
+      className={cn(
+        "flex items-start gap-3 rounded-lg border px-4 py-3 transition-all duration-200",
+        isLive
+          ? "border-success bg-success-container/20 hover:shadow-sm"
+          : "border-outline-variant bg-surface-bright hover:shadow-sm hover:border-secondary/30",
+      )}
+    >
+      <div className="flex flex-col items-center gap-0.5 shrink-0 min-w-[48px]">
+        <span className="font-mono text-label-sm text-on-surface-variant">
+          {formatSafe(session.startTime, "MMM d")}
+        </span>
+        <span className="font-mono text-label-md font-semibold text-on-surface">
+          {formatSafe(session.startTime, "HH:mm")}
+        </span>
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-body-sm font-medium text-on-surface line-clamp-1">
+            {session.title || "Untitled Session"}
+          </p>
+          {isLive && (
+            <span className="badge badge-success gap-1">
+              <motion.span
+                animate={{ opacity: [1, 0.3, 1] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+                className="h-1.5 w-1.5 rounded-full bg-success"
+              />
+              Live
+            </span>
+          )}
+          {past && !isLive && (
+            <span className="badge badge-neutral">Ended</span>
+          )}
+        </div>
+        <p className="font-mono text-label-sm text-on-surface-variant line-clamp-1">
+          {session.location || "TBD"} · {session.format || "Session"}
+        </p>
+
+        {/* Show rating if session has feedback */}
+        {count > 0 && (
+          <div className="mt-1 flex items-center gap-2">
+            <FeedbackStars rating={avg} size="sm" readonly />
+            <span className="font-mono text-label-sm text-on-surface-variant">
+              ({count} {count === 1 ? "review" : "reviews"})
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* View Feedback button */}
+      {count > 0 && (
+        <button
+          onClick={() => onViewFeedback(session._id, session.title)}
+          className="btn-ghost btn-sm gap-1 shrink-0"
+        >
+          View Feedback
+        </button>
+      )}
+    </motion.div>
+  );
+}
+
+// ─── Paginated Exhibitor Sessions ─────────────────────────────────────────────
+function ExhibitorSessionsPaginated({ 
+  sessions, 
+  getSessionAverage, 
+  onViewFeedback, 
+  itemsPerPage = 3 
+}) {
+  const [currentPage, setCurrentPage] = useState(1);
+  
+  const totalPages = Math.ceil(sessions.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedSessions = sessions.slice(startIndex, endIndex);
+
+  // Reset to page 1 when sessions change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [sessions.length]);
+
+  if (sessions.length === 0) {
+    return (
+      <div className="py-8 text-center">
+        <p className="text-body-sm text-on-surface-variant">No sessions to display.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Sessions list */}
+      <div className="grid grid-cols-1 gap-3 sm:gap-4">
+        <AnimatePresence mode="wait">
+          {paginatedSessions.map((session, i) => {
+            const avg = getSessionAverage(session._id);
+            return (
+              <motion.div
+                key={session._id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2, delay: i * 0.05 }}
+              >
+                <ExhibitorSessionCard
+                  session={session}
+                  feedback={avg}
+                  onViewFeedback={onViewFeedback}
+                  index={i}
+                />
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </div>
+
+      {/* Pagination controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-2 border-t border-outline-variant">
+          <p className="font-mono text-label-sm text-on-surface-variant">
+            Showing {startIndex + 1}–{Math.min(endIndex, sessions.length)} of {sessions.length} sessions
+          </p>
+          <div className="flex items-center gap-1.5">
+            <motion.button
+              whileHover={{ x: -2 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="btn-ghost btn-sm gap-1 disabled:opacity-40"
+            >
+              <ChevronLeft size={14} /> Prev
+            </motion.button>
+
+            {/* Page numbers */}
+            <div className="flex items-center gap-0.5">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                <motion.button
+                  key={pageNum}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setCurrentPage(pageNum)}
+                  className={cn(
+                    "min-w-[32px] h-8 rounded-md text-label-sm font-medium transition-all duration-200",
+                    currentPage === pageNum
+                      ? "bg-secondary text-on-secondary shadow-sm"
+                      : "text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+                  )}
+                >
+                  {pageNum}
+                </motion.button>
+              ))}
+            </div>
+
+            <motion.button
+              whileHover={{ x: 2 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="btn-ghost btn-sm gap-1 disabled:opacity-40"
+            >
+              Next <ChevronRight size={14} />
+            </motion.button>
+          </div>
+        </div>
+      )}
+
+      {/* Show total count when only 1 page */}
+      {totalPages <= 1 && sessions.length > itemsPerPage && (
+        <p className="font-mono text-label-sm text-on-surface-variant text-right">
+          {sessions.length} sessions total
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function AttendeeSessions() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [mutatingId, setMutatingId] = useState(null);
   const queryClient = useQueryClient();
+
+  // State configurations for Exhibitor Feedback Overlay
+  const [selectedSession, setSelectedSession] = useState(null);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
 
   const page = parseInt(searchParams.get("page") || "1", 10);
   const search = searchParams.get("search") || "";
@@ -406,6 +737,59 @@ export default function AttendeeSessions() {
     },
     [setSearchParams],
   );
+
+  // ── Fetch speaking sessions (using the same endpoint as dashboard) ──────────
+  const { data: speakingSessions = [] } = useQuery({
+    queryKey: ["sessions", "me", "speaking"],
+    queryFn: async () => {
+      const { data } = await api.get("/sessions/me/speaking");
+      return data.data.sessions;
+    },
+    enabled: !!user?._id,
+  });
+
+  // ── Fetch feedback for speaking sessions ──────────────────────────────────
+  const { data: exhibitorFeedbackData, isLoading: feedbackLoading } = useQuery({
+    queryKey: [
+      "feedback",
+      "exhibitor",
+      "sessions",
+      speakingSessions.map((s) => s._id).join(","),
+    ],
+    queryFn: async () => {
+      const sessionIds = speakingSessions.map((s) => s._id);
+      if (sessionIds.length === 0) return { feedback: [] };
+
+      // Fetch feedback for each session
+      const feedbackPromises = sessionIds.map((id) =>
+        api.get(`/feedback/session/${id}?includePending=true`),
+      );
+      const results = await Promise.all(feedbackPromises);
+
+      const allFeedback = results.flatMap((r) => r.data.data.feedback || []);
+      return { feedback: allFeedback };
+    },
+    enabled: speakingSessions.length > 0,
+  });
+
+  // Get average rating for each session
+  const getSessionAverage = (sessionId) => {
+    const sessionFeedback =
+      exhibitorFeedbackData?.feedback?.filter(
+        (f) => f.sessionId?._id === sessionId || f.sessionId === sessionId,
+      ) || [];
+    if (sessionFeedback.length === 0) return null;
+    const total = sessionFeedback.reduce((sum, f) => sum + f.rating, 0);
+    return {
+      average: (total / sessionFeedback.length).toFixed(1),
+      count: sessionFeedback.length,
+    };
+  };
+
+  const handleViewFeedback = (sessionId, sessionTitle) => {
+    setSelectedSession({ id: sessionId, title: sessionTitle });
+    setShowFeedbackModal(true);
+  };
 
   // ── Fetch published expos for the selector ──────────────────────────────────
   const { data: expos = [] } = useQuery({
@@ -521,7 +905,7 @@ export default function AttendeeSessions() {
 
   const bookmarkMutation = useMutation({
     mutationFn: (sessionId) => api.post(`/sessions/${sessionId}/bookmark`),
-    onSuccess: (res, sessionId) => {
+    onSuccess: (res) => {
       const { isBookmarked } = res.data;
       toast.success(isBookmarked ? "Bookmarked! 🔖" : "Bookmark removed.");
       queryClient.invalidateQueries({ queryKey: sessionKeys.myBookmarks() });
@@ -555,19 +939,60 @@ export default function AttendeeSessions() {
         <div>
           <h1 className="page-title flex items-center gap-2">
             <Sparkles size={20} className="text-secondary" />
-            Sessions
+            Sessions Dashboard
           </h1>
           <p className="page-subtitle">
             {!isLoading && pagination.total > 0 ? (
               <span>
-                <CountUp end={pagination.total} /> sessions available
+                Discover events, manage registrations, or review your session
+                analytics.
               </span>
             ) : (
-              "Browse and register for talks, workshops, and keynotes."
+              "Browse events, join schedules, or track attendee analytics."
             )}
           </p>
         </div>
       </motion.div>
+
+      {/* ── Exhibitor Speaking Schedule Section ────────────────────── */}
+      {speakingSessions.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="card flex flex-col gap-5 border-secondary/20 bg-gradient-to-br from-secondary-container/10 to-surface-bright"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-outline-variant pb-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary-container">
+                <Mic2 size={18} className="text-on-secondary-container" />
+              </div>
+              <div>
+                <h2 className="text-headline-sm font-semibold text-on-surface">
+                  Your Hosted Sessions
+                </h2>
+                <p className="text-body-sm text-on-surface-variant mt-0.5">
+                  {speakingSessions.length} session
+                  {speakingSessions.length > 1 ? "s" : ""} · Feedback insights
+                  below
+                </p>
+              </div>
+            </div>
+            <span className="hidden sm:inline-flex items-center gap-1.5 font-mono text-label-sm text-on-surface-variant">
+              <div className="h-2 w-2 rounded-full bg-secondary animate-pulse" />
+              Live tracking
+            </span>
+          </div>
+
+          {/* ✅ Paginated Sessions grid */}
+          <ExhibitorSessionsPaginated
+            sessions={speakingSessions}
+            getSessionAverage={getSessionAverage}
+            onViewFeedback={handleViewFeedback}
+            itemsPerPage={3}
+          />
+        </motion.div>
+      )}
 
       {/* ── Expo selector ────────────────────────────────────────── */}
       <motion.div
@@ -579,7 +1004,7 @@ export default function AttendeeSessions() {
         <div className="flex items-center gap-2 shrink-0">
           <CalendarDays size={16} className="text-secondary" />
           <span className="text-body-sm font-medium text-on-surface">
-            Select Event
+            Select Event Schedule
           </span>
         </div>
         <select
@@ -597,7 +1022,7 @@ export default function AttendeeSessions() {
         </select>
       </motion.div>
 
-      {/* Only show filters/sessions if an expo is selected */}
+      {/* Main schedule board section handles */}
       {!expoId ? (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -613,7 +1038,8 @@ export default function AttendeeSessions() {
           </motion.div>
           <h3 className="empty-state-title">Select an event above</h3>
           <p className="empty-state-body">
-            Choose an event to browse its session schedule.
+            Choose an event above to review public workshop timelines and join
+            presentations.
           </p>
         </motion.div>
       ) : (
@@ -740,31 +1166,40 @@ export default function AttendeeSessions() {
               >
                 <BookOpen size={24} />
               </motion.div>
-              <h3 className="empty-state-title">No sessions found</h3>
+              <h3 className="empty-state-title">No public sessions found</h3>
               <p className="empty-state-body">
                 {search || format_ || date
-                  ? "Try adjusting your filters."
-                  : "No sessions have been scheduled for this event yet."}
+                  ? "Try adjusting your search criteria or filters."
+                  : "No public sessions are open for selection under this timeline yet."}
               </p>
             </motion.div>
           ) : (
-            <AnimatePresence mode="popLayout">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {sessions.map((session, i) => (
-                  <SessionCard
-                    key={session._id}
-                    session={session}
-                    index={i}
-                    isRegistered={registeredIds.has(session._id)}
-                    isBookmarked={bookmarkedIds.has(session._id)}
-                    isMutating={mutatingId === session._id}
-                    onRegister={() => handleAction(session._id, "register")}
-                    onUnregister={() => handleAction(session._id, "unregister")}
-                    onBookmark={() => handleAction(session._id, "bookmark")}
-                  />
-                ))}
-              </div>
-            </AnimatePresence>
+            <div className="flex flex-col gap-3">
+              <h2 className="text-body-lg font-bold text-on-surface">
+                Available Event Sessions
+              </h2>
+              <AnimatePresence mode="popLayout">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {sessions.map((session, i) => (
+                    <SessionCard
+                      key={session._id}
+                      session={session}
+                      index={i}
+                      expoId={expoId}
+                      queryClient={queryClient}
+                      isRegistered={registeredIds.has(session._id)}
+                      isBookmarked={bookmarkedIds.has(session._id)}
+                      isMutating={mutatingId === session._id}
+                      onRegister={() => handleAction(session._id, "register")}
+                      onUnregister={() =>
+                        handleAction(session._id, "unregister")
+                      }
+                      onBookmark={() => handleAction(session._id, "bookmark")}
+                    />
+                  ))}
+                </div>
+              </AnimatePresence>
+            </div>
           )}
 
           {/* ── Pagination ────────────────────────────────────── */}
@@ -773,7 +1208,7 @@ export default function AttendeeSessions() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="flex items-center justify-between"
+              className="flex items-center justify-between mt-2"
             >
               <p className="font-mono text-label-sm text-on-surface-variant">
                 Page {pagination.page} of {pagination.totalPages} ·{" "}
@@ -803,6 +1238,55 @@ export default function AttendeeSessions() {
           )}
         </>
       )}
+
+      {/* Exhibitor Session Reviews Modal Window */}
+      <AnimatePresence>
+        {showFeedbackModal && selectedSession && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            {/* Backdrop Layer */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+              onClick={() => setShowFeedbackModal(false)}
+            />
+
+            {/* Modal Box Context Content Container */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-xl border border-outline-variant bg-surface-bright shadow-xl p-6 z-[101]"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-headline-sm font-semibold text-on-surface">
+                  Feedback for "{selectedSession.title}"
+                </h2>
+                <button
+                  onClick={() => setShowFeedbackModal(false)}
+                  className="rounded p-1 text-on-surface-variant hover:bg-surface-container transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <FeedbackList
+                feedback={
+                  exhibitorFeedbackData?.feedback?.filter(
+                    (f) =>
+                      f.sessionId?._id === selectedSession.id ||
+                      f.sessionId === selectedSession.id,
+                  ) || []
+                }
+                stats={null}
+                loading={feedbackLoading}
+                emptyMessage="No feedback yet for this session."
+              />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

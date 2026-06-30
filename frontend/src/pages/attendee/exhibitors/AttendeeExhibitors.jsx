@@ -103,6 +103,9 @@ function ExhibitorCard({ exhibitor, index, onMessage }) {
   ];
   const gradientColor = colors[index % colors.length];
 
+  // ✅ Check if banner exists
+  const hasBanner = exhibitor.bannerImage && exhibitor.bannerImage.trim() !== "";
+
   return (
     <motion.div
       layout
@@ -120,13 +123,36 @@ function ExhibitorCard({ exhibitor, index, onMessage }) {
       {/* Banner/Gradient Header */}
       <div
         className={cn(
-          "relative -mx-6 -mt-6 mb-2 h-24 overflow-hidden bg-gradient-to-br",
-          gradientColor,
+          "relative -mx-6 -mt-6 mb-2 h-24 overflow-hidden",
+          hasBanner ? "bg-surface-container" : `bg-gradient-to-br ${gradientColor}`,
         )}
       >
-        {/* Decorative circles */}
-        <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-white/10" />
-        <div className="absolute -bottom-6 -left-2 w-16 h-16 rounded-full bg-white/5" />
+        {/* Banner Image */}
+        {hasBanner ? (
+          <>
+            <motion.img
+              initial={{ scale: 1.05 }}
+              animate={{ scale: 1 }}
+              transition={{ duration: 0.6 }}
+              src={exhibitor.bannerImage}
+              alt={`${exhibitor.companyName} banner`}
+              className="h-full w-full object-cover"
+              onError={(e) => {
+                // Fallback if image fails to load
+                e.target.style.display = 'none';
+                e.target.parentElement.className = `relative -mx-6 -mt-6 mb-2 h-24 overflow-hidden bg-gradient-to-br ${gradientColor}`;
+              }}
+            />
+            {/* Overlay gradient to ensure text contrast */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+          </>
+        ) : (
+          <>
+            {/* Decorative circles for gradient fallback */}
+            <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-white/10" />
+            <div className="absolute -bottom-6 -left-2 w-16 h-16 rounded-full bg-white/5" />
+          </>
+        )}
 
         {/* Verified badge */}
         {exhibitor.isVerified && (
@@ -148,7 +174,10 @@ function ExhibitorCard({ exhibitor, index, onMessage }) {
       </div>
 
       {/* Company header */}
-      <div className="flex items-start gap-3 -mt-8">
+      <div className={cn(
+        "flex items-start gap-3",
+        hasBanner ? "-mt-8" : "-mt-8"
+      )}>
         {exhibitor.logo ? (
           <motion.img
             whileHover={{ scale: 1.05 }}
@@ -324,16 +353,16 @@ export default function AttendeeExhibitors() {
     keepPreviousData: true,
   });
 
- const handleMessage = useCallback((exhibitor) => {
-  const participantId = exhibitor.userId?._id || exhibitor.userId;
-  if (participantId) {
-    navigate('/attendee/messages', { 
-      state: { openChatWith: participantId } 
-    });
-  } else {
-    navigate('/attendee/messages');
-  }
-}, [navigate]);
+  const handleMessage = useCallback((exhibitor) => {
+    const participantId = exhibitor.userId?._id || exhibitor.userId;
+    if (participantId) {
+      navigate('/attendee/messages', { 
+        state: { openChatWith: participantId } 
+      });
+    } else {
+      navigate('/attendee/messages');
+    }
+  }, [navigate]);
 
   const profiles = data?.profiles || [];
   const pagination = data?.pagination || {};

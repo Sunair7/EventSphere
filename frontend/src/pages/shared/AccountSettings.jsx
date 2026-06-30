@@ -1,19 +1,20 @@
-import { useState, useRef }                    from 'react';  // Added useRef
+import { useState, useRef }                    from 'react';
 import { useForm }                     from 'react-hook-form';
 import { zodResolver }                 from '@hookform/resolvers/zod';
 import { z }                           from 'zod';
 import { useMutation }                 from '@tanstack/react-query';
 import { motion, AnimatePresence }     from 'framer-motion';
-import axios from 'axios';  // Added axios
+import axios from 'axios';
 import {
   User, Lock, Mail, ShieldCheck, Trash2, Upload,
   Eye, EyeOff, CheckCircle2, AlertCircle,
-  Save, RefreshCw, LogOut,
-} from 'lucide-react';  // Added Upload
+  Save, RefreshCw, LogOut, BookOpen,
+} from 'lucide-react';
 import toast                           from 'react-hot-toast';
 import api                             from '@/utils/api';
 import { useAuth }                     from '@/context/AuthContext';
 import { cn }                          from '@/utils/cn';
+import { useTutorial }                 from '@/hooks/useTutorial'; // ✅ ADD THIS
 
 // ─── Validation schemas ───────────────────────────────────────────────────────
 const profileSchema = z.object({
@@ -210,6 +211,10 @@ export default function AccountSettings() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarInputRef = useRef(null);
 
+  // ✅ Tutorial hook - get the user's role
+  const userRole = user?.role || 'attendee';
+  const { resetTutorial } = useTutorial(userRole);
+
   // ── Profile form ────────────────────────────────────────────────────────────
   const {
     register:     registerProfile,
@@ -326,6 +331,22 @@ export default function AccountSettings() {
     },
     onError: (err) => toast.error(err.message || 'Failed to deactivate account.'),
   });
+
+  // ✅ Reset all tutorials (for admin users)
+  const resetAllTutorials = () => {
+    const roles = ['admin', 'exhibitor', 'attendee'];
+    roles.forEach(role => {
+      localStorage.removeItem(`tutorial_${role}_completed`);
+      localStorage.removeItem(`tutorial_${role}_skipped`);
+    });
+    toast.success('Tutorials reset successfully! The tutorial will show on your next dashboard visit.');
+  };
+
+  // ✅ Reset only current user's tutorial
+  const resetMyTutorial = () => {
+    resetTutorial();
+    toast.success('Tutorial reset! It will show on your next dashboard visit.');
+  };
 
   const roleLabel = { admin: 'Admin', exhibitor: 'Exhibitor', attendee: 'Attendee' }[user?.role] || 'User';
 
@@ -499,6 +520,48 @@ export default function AccountSettings() {
               </button>
             </div>
           </form>
+        </SettingsSection>
+
+        {/* ✅ Tutorial Settings Section ─────────────────────────── */}
+        <SettingsSection 
+          icon={BookOpen} 
+          title="Tutorial Settings"
+          description="Reset the onboarding tutorial to see it again."
+        >
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-body-sm font-medium text-on-surface">Reset My Tutorial</p>
+                <p className="mt-0.5 text-body-sm text-on-surface-variant">
+                  Show the onboarding tutorial again on your next dashboard visit.
+                </p>
+              </div>
+              <button 
+                onClick={resetMyTutorial}
+                className="btn-ghost btn-sm gap-1.5 shrink-0"
+              >
+                <RefreshCw size={14} /> Reset Tutorial
+              </button>
+            </div>
+
+            {/* Admin-only: Reset all tutorials */}
+            {user?.role === 'admin' && (
+              <div className="flex items-start justify-between gap-4 pt-4 border-t border-outline-variant">
+                <div>
+                  <p className="text-body-sm font-medium text-on-surface">Reset All Tutorials</p>
+                  <p className="mt-0.5 text-body-sm text-on-surface-variant">
+                    Reset tutorials for all users (admin, exhibitor, attendee). Useful for testing.
+                  </p>
+                </div>
+                <button 
+                  onClick={resetAllTutorials}
+                  className="btn-ghost btn-sm gap-1.5 shrink-0 text-error hover:bg-error-container"
+                >
+                  <Trash2 size={14} /> Reset All
+                </button>
+              </div>
+            )}
+          </div>
         </SettingsSection>
 
         {/* ── Sign out ──────────────────────────────────────────── */}

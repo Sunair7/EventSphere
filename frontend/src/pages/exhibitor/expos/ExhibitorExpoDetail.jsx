@@ -25,13 +25,14 @@ import {
   ExternalLink,
   RefreshCw,
   XCircle,
+  DollarSign,
 } from "lucide-react";
 import { format, differenceInDays, isPast } from "date-fns";
 import toast from "react-hot-toast";
 import api from "@/utils/api";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/utils/cn";
-import { useBooth } from "@/hooks/useBooth"; // ✅ ADD THIS
+import { useBooth } from "@/hooks/useBooth";
 
 // ─── Query keys ───────────────────────────────────────────────────────────────
 const expoKey = (id) => ["expos", "exhibitor", "detail", id];
@@ -334,7 +335,6 @@ function BoothStatusCard({ expoId, profile, onCancel }) {
                 >
                   <LayoutGrid size={13} /> Map
                 </Link>
-                {/* ✅ Cancel button */}
                 <button
                   onClick={() => onCancel(boothData?._id || myBooth.boothId)}
                   className="btn-ghost btn-sm gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-error hover:bg-error-container"
@@ -596,6 +596,11 @@ export default function ExhibitorExpoDetail() {
     : null;
   const isOngoing = expo?.status === "ongoing";
 
+  // Format booth price for display
+  const formattedBoothPrice = expo?.boothPrice > 0 
+    ? `$${(expo.boothPrice / 100).toFixed(2)} ${expo.boothCurrency || 'USD'}` 
+    : 'Free';
+
   return (
     <div className="flex flex-col">
       {/* ── Banner Hero ──────────────────────────────────────────── */}
@@ -694,6 +699,11 @@ export default function ExhibitorExpoDetail() {
                       : "—"
                   }
                   icon={MapPin}
+                />
+                <Field
+                  label="Booth Price"
+                  value={formattedBoothPrice}
+                  icon={DollarSign}
                 />
                 <Field
                   label="Reg. Deadline"
@@ -896,45 +906,27 @@ export default function ExhibitorExpoDetail() {
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
-  <button
-    type="button"
-    disabled={isCancelling}
-    onClick={() => {
-      setCancelModalOpen(false);
-      setSelectedBoothId(null);
-    }}
-    className="
-      rounded-xl
-      border border-outline-variant
-      bg-surface
-      px-4 py-2
-      text-on-surface
-      transition-colors
-      hover:bg-surface-container
-      disabled:opacity-50
-    "
-  >
-    Keep Reservation
-  </button>
+              <button
+                type="button"
+                disabled={isCancelling}
+                onClick={() => {
+                  setCancelModalOpen(false);
+                  setSelectedBoothId(null);
+                }}
+                className="rounded-xl border border-outline-variant bg-surface px-4 py-2 text-on-surface transition-colors hover:bg-surface-container disabled:opacity-50"
+              >
+                Keep Reservation
+              </button>
 
-  <button
-    type="button"
-    disabled={isCancelling}
-    onClick={confirmCancelBooth}
-    className="
-      rounded-xl
-      bg-error-container
-      px-4 py-2
-      text-on-error-container
-      shadow-sm
-      transition-all
-      hover:opacity-90
-      disabled:opacity-50
-    "
-  >
-    {isCancelling ? "Cancelling..." : "Cancel Reservation"}
-  </button>
-</div>
+              <button
+                type="button"
+                disabled={isCancelling}
+                onClick={confirmCancelBooth}
+                className="rounded-xl bg-error-container px-4 py-2 text-on-error-container shadow-sm transition-all hover:opacity-90 disabled:opacity-50"
+              >
+                {isCancelling ? "Cancelling..." : "Cancel Reservation"}
+              </button>
+            </div>
           </div>
         </div>
       )}

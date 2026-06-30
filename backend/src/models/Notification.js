@@ -32,6 +32,14 @@ const NOTIFICATION_TYPES = Object.freeze([
   "booth_reservation_expired", // Expired reservation
   "session_registered", // Already there
   "session_confirmed", // Session confirmed after payment
+  'feedback_submitted',      // User submitted feedback
+  'feedback_approved',       // User's feedback was approved
+  'feedback_rejected',       // User's feedback was rejected
+  'feedback_received',       // Exhibitor received feedback for their session
+  'feedback_pending',        // Admin notification - new feedback pending
+  'feedback_edited',         // Admin notification - feedback was edited
+  'feedback_approved_admin', // Admin notification - feedback was approved
+  'feedback_rejected_admin', // Admin notification - feedback was rejected
 ]);
 
 // ─── Target Roles ─────────────────────────────────────────────────────────────
@@ -97,6 +105,7 @@ const NotificationSchema = new mongoose.Schema(
         "ExhibitorProfile",
         "User",
         "Message",
+        "Feedback",
         null,
       ],
       default: null,

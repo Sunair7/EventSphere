@@ -35,33 +35,37 @@ import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { useUnreadCount } from "@/hooks/useMessages";
 import { cn } from "@/utils/cn";
-import api from "@/utils/api"; // ← ADD THIS
-import NotificationPanel from "@/components/ui/NotificationPanel"; // ← ADD THIS
+import api from "@/utils/api";
+import NotificationPanel from "@/components/ui/NotificationPanel";
+import AdvancedTutorial from "@/components/onboarding/AdvancedTutorial";
+import { useTutorial } from "@/hooks/useTutorial";
 
 // ─── Navigation config per role ───────────────────────────────────────────────
 const NAV_CONFIG = {
   admin: [
-    { label: "Dashboard", path: "/admin/dashboard", icon: LayoutDashboard },
-    { label: "Expos", path: "/admin/expos", icon: CalendarDays },
-    { label: "Exhibitors", path: "/admin/exhibitors", icon: Building2 },
-    { label: "Users", path: "/admin/users", icon: Users },
+    { label: "Dashboard", path: "/admin/dashboard", icon: LayoutDashboard, tutorialClass: "dashboard-header" },
+    { label: "Expos", path: "/admin/expos", icon: CalendarDays, tutorialClass: "expos-tab" },
+    { label: "Exhibitors", path: "/admin/exhibitors", icon: Building2, tutorialClass: "exhibitors-tab" },
+    { label: "Users", path: "/admin/users", icon: Users, tutorialClass: "attendees-tab" },
+    { label: "Feedback", path: "/admin/feedback", icon: BarChart3, tutorialClass: "feedback-tab" }, // ✅ ADDED feedback-tab
     { label: "Messages", path: "/admin/messages", icon: MessageSquare },
     { label: "Analytics", path: "/admin/analytics", icon: BarChart3 },
     { label: "Settings", path: "/admin/settings", icon: Settings },
   ],
   exhibitor: [
-    { label: "Dashboard", path: "/exhibitor/dashboard", icon: LayoutDashboard },
-    { label: "My Profile", path: "/exhibitor/profile", icon: UserCircle },
-    { label: "Browse Expos", path: "/exhibitor/expos", icon: Compass },
-    { label: "Sessions", path: "/exhibitor/sessions", icon: BookOpen },
+    { label: "Dashboard", path: "/exhibitor/dashboard", icon: LayoutDashboard, tutorialClass: "dashboard-header" },
+    { label: "My Profile", path: "/exhibitor/profile", icon: UserCircle, tutorialClass: "profile-tab" },
+    { label: "Browse Expos", path: "/exhibitor/expos", icon: Compass, tutorialClass: "expos-tab" },
+    { label: "Floor Plan", path: "/exhibitor/expos/:id/floor-plan", icon: MapPin, tutorialClass: "floor-plan-tab" }, // ✅ ADDED floor-plan-tab
+    { label: "Sessions", path: "/exhibitor/sessions", icon: BookOpen, tutorialClass: "sessions-tab" },
     { label: "Messages", path: "/exhibitor/messages", icon: MessageSquare },
     { label: "Settings", path: "/exhibitor/settings", icon: Settings },
   ],
   attendee: [
-    { label: "Dashboard", path: "/attendee/dashboard", icon: LayoutDashboard },
-    { label: "Expos", path: "/attendee/expos", icon: Compass },
-    { label: "Schedule", path: "/attendee/schedule", icon: CalendarDays },
-    { label: "Sessions", path: "/attendee/sessions", icon: BookOpen },
+    { label: "Dashboard", path: "/attendee/dashboard", icon: LayoutDashboard, tutorialClass: "dashboard-header" },
+    { label: "Expos", path: "/attendee/expos", icon: Compass, tutorialClass: "expos-tab" },
+    { label: "Schedule", path: "/attendee/schedule", icon: CalendarDays, tutorialClass: "schedule-tab" },
+    { label: "Sessions", path: "/attendee/sessions", icon: BookOpen, tutorialClass: "sessions-tab" },
     { label: "Exhibitors", path: "/attendee/exhibitors", icon: Building2 },
     { label: "Messages", path: "/attendee/messages", icon: MessageSquare },
     { label: "Settings", path: "/attendee/settings", icon: Settings },
@@ -86,7 +90,7 @@ const pageTransition = {
   ease: [0.4, 0, 0.2, 1],
 };
 
-// ─── Sidebar (unchanged) ─────────────────────────────────────────────────────
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
 function Sidebar({
   role,
   onClose,
@@ -179,6 +183,7 @@ function Sidebar({
                       navActive || isActive
                         ? "bg-white/10 text-inverse-on-surface"
                         : "text-inverse-on-surface/60 hover:bg-white/8 hover:text-inverse-on-surface/90",
+                      item.tutorialClass || "", // ✅ Fallback to empty string if undefined
                     )
                   }
                   end={item.path === `/${role}/dashboard`}
@@ -314,7 +319,6 @@ function TopBar({ role, onMenuClick, collapsed, onToggleCollapse }) {
 
   const unreadNotifCount = notifData?.unreadCount || 0;
 
-  // 🔑 Real-time notification badge update via Socket.io
   useEffect(() => {
     const unsubNew = onNotifyEvent("notification:new", () => {
       queryClient.invalidateQueries({
@@ -352,13 +356,12 @@ function TopBar({ role, onMenuClick, collapsed, onToggleCollapse }) {
         >
           {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </button>
-        <h1 className="text-headline-sm font-semibold text-on-surface capitalize truncate">
+        <h1 className="text-headline-sm font-semibold text-on-surface capitalize truncate dashboard-header">
           {pageTitle}
         </h1>
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
-        {/* Messages */}
         <button
           onClick={() => navigate(`/${role}/messages`)}
           className="relative rounded p-2 text-on-surface-variant hover:bg-surface-container transition-colors duration-200"
@@ -376,7 +379,6 @@ function TopBar({ role, onMenuClick, collapsed, onToggleCollapse }) {
           )}
         </button>
 
-        {/* Notifications Bell */}
         <div className="relative">
           <button
             onClick={() => setShowNotifPanel(!showNotifPanel)}
@@ -408,7 +410,6 @@ function TopBar({ role, onMenuClick, collapsed, onToggleCollapse }) {
           </AnimatePresence>
         </div>
 
-        {/* User chip */}
         <button
           onClick={() => navigate(`/${role}/settings`)}
           className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-surface-container transition-colors duration-200"
@@ -445,6 +446,9 @@ export default function DashboardLayout({ role }) {
   });
   const location = useLocation();
 
+  // ✅ Tutorial hook
+  const { showTutorial, completeTutorial, skipTutorial } = useTutorial(role);
+
   const toggleCollapse = useCallback(() => {
     setSidebarCollapsed((prev) => {
       const next = !prev;
@@ -468,6 +472,14 @@ export default function DashboardLayout({ role }) {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
+      {/* ✅ Tutorial Component - placed at root level */}
+      <AdvancedTutorial
+        role={role}
+        isOpen={showTutorial}
+        onComplete={completeTutorial}
+        onSkip={skipTutorial}
+      />
+
       <div className="hidden lg:flex lg:shrink-0">
         <Sidebar
           role={role}
@@ -536,7 +548,7 @@ export default function DashboardLayout({ role }) {
             </div>
           </motion.div>
         )}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto dashboard-content">
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}

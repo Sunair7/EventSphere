@@ -56,7 +56,7 @@ const createExpo = async (req, res, next) => {
     const {
       title, description, theme, startDate, endDate,
       registrationDeadline, address, floorPlanConfig,
-      tags, maxAttendees, isPublic,
+      tags, maxAttendees, isPublic, boothPrice, boothCurrency,
     } = req.body;
 
     const expo = await Expo.create({
@@ -71,6 +71,8 @@ const createExpo = async (req, res, next) => {
       tags:         tags         || [],
       maxAttendees: maxAttendees || null,
       isPublic:     isPublic !== undefined ? isPublic : true,
+      boothPrice:   boothPrice   || 0,
+      boothCurrency: boothCurrency || 'USD',
       createdBy:    req.user._id,
     });
 
@@ -86,6 +88,8 @@ const createExpo = async (req, res, next) => {
           boothNumber:     num,
           dimensions:      `${floorPlanConfig.boothWidth || 3}m x ${floorPlanConfig.boothHeight || 3}m`,
           gridCoordinates: { row: r, col: c },
+          price:           boothPrice || 0,
+          currency:        boothCurrency || 'USD',
         });
       }
     }
@@ -106,28 +110,27 @@ const createExpo = async (req, res, next) => {
     }
 
     
-if (expo.status === 'published') {
-  // Notify exhibitors
-  await Notification.notifyRole(req.app.get('io'), 'exhibitor', {
-    type: 'expo_published',
-    title: `New Expo: ${expo.title}`,
-    body: `A new expo "${expo.title}" is now accepting applications.`,
-    link: `/exhibitor/expos/${expo._id}`,
-    referenceId: expo._id,
-    referenceModel: 'Expo',
-  });
-  
-  // Notify attendees
-  await Notification.notifyRole(req.app.get('io'), 'attendee', {
-    type: 'expo_published',
-    title: `New Expo: ${expo.title}`,
-    body: `"${expo.title}" has been announced. Browse sessions and register!`,
-    link: `/attendee/expos/${expo._id}`,
-    referenceId: expo._id,
-    referenceModel: 'Expo',
-  });
-}
-
+    if (expo.status === 'published') {
+      // Notify exhibitors
+      await Notification.notifyRole(req.app.get('io'), 'exhibitor', {
+        type: 'expo_published',
+        title: `New Expo: ${expo.title}`,
+        body: `A new expo "${expo.title}" is now accepting applications.`,
+        link: `/exhibitor/expos/${expo._id}`,
+        referenceId: expo._id,
+        referenceModel: 'Expo',
+      });
+      
+      // Notify attendees
+      await Notification.notifyRole(req.app.get('io'), 'attendee', {
+        type: 'expo_published',
+        title: `New Expo: ${expo.title}`,
+        body: `"${expo.title}" has been announced. Browse sessions and register!`,
+        link: `/attendee/expos/${expo._id}`,
+        referenceId: expo._id,
+        referenceModel: 'Expo',
+      });
+    }
 
     return res.status(201).json({
       success: true,
@@ -295,7 +298,7 @@ const updateExpo = async (req, res, next) => {
     const allowedFields = [
       'title', 'description', 'theme', 'startDate', 'endDate',
       'registrationDeadline', 'address', 'tags', 'maxAttendees',
-      'isPublic', 'banner',
+      'isPublic', 'banner', 'boothPrice', 'boothCurrency',
     ];
 
     allowedFields.forEach((field) => {
@@ -309,6 +312,19 @@ const updateExpo = async (req, res, next) => {
     });
 
     await expo.save();
+
+    // If booth price is updated, update all existing booths as well
+    if (req.body.boothPrice !== undefined) {
+      await Booth.updateMany(
+        { expoId: id },
+        { 
+          $set: { 
+            price: req.body.boothPrice,
+            currency: req.body.boothCurrency || 'USD'
+          } 
+        }
+      );
+    }
 
     return res.status(200).json({
       success: true,
@@ -359,27 +375,25 @@ const updateExpoStatus = async (req, res, next) => {
     }
 
     if (status === 'published') {
-  await expo.publish();
-  
-  // Notify exhibitors and attendees
-  await Notification.notifyRole(req.app.get('io'), 'exhibitor', {
-    type: 'expo_published',
-    title: `New Expo: ${expo.title}`,
-    body: `A new expo "${expo.title}" is now accepting applications.`,
-    link: `/exhibitor/expos/${expo._id}`,
-    referenceId: expo._id,
-    referenceModel: 'Expo',
-  });
-  
-  await Notification.notifyRole(req.app.get('io'), 'attendee', {
-    type: 'expo_published',
-    title: `New Expo: ${expo.title}`,
-    body: `"${expo.title}" has been announced. Browse sessions and register!`,
-    link: `/attendee/expos/${expo._id}`,
-    referenceId: expo._id,
-    referenceModel: 'Expo',
-  });
-}
+      // Notify exhibitors and attendees
+      await Notification.notifyRole(req.app.get('io'), 'exhibitor', {
+        type: 'expo_published',
+        title: `New Expo: ${expo.title}`,
+        body: `A new expo "${expo.title}" is now accepting applications.`,
+        link: `/exhibitor/expos/${expo._id}`,
+        referenceId: expo._id,
+        referenceModel: 'Expo',
+      });
+      
+      await Notification.notifyRole(req.app.get('io'), 'attendee', {
+        type: 'expo_published',
+        title: `New Expo: ${expo.title}`,
+        body: `"${expo.title}" has been announced. Browse sessions and register!`,
+        link: `/attendee/expos/${expo._id}`,
+        referenceId: expo._id,
+        referenceModel: 'Expo',
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -521,6 +535,8 @@ const getExpoStats = async (req, res, next) => {
           startDate:     expo.startDate,
           endDate:       expo.endDate,
           attendeeCount: expo.attendeeCount,
+          boothPrice:    expo.boothPrice || 0,
+          boothCurrency: expo.boothCurrency || 'USD',
         },
         booths:   boothStats,
         sessions: sessionStats,
@@ -542,7 +558,7 @@ const getUpcomingExpos = async (req, res, next) => {
       isPublic:  true,
       startDate: { $gt: new Date() },
     })
-      .select('title slug description startDate endDate address theme tags banner boothCount sessionCount')
+      .select('title slug description startDate endDate address theme tags banner boothCount sessionCount boothPrice boothCurrency')
       .sort({ startDate: 1 })
       .limit(limit)
       .lean();

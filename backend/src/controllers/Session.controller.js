@@ -6,6 +6,7 @@ const Session              = require('../models/Session');
 const Expo                 = require('../models/Expo');
 const User                 = require('../models/User');
 const ExhibitorProfile     = require('../models/Exhibitorprofile');
+const Feedback             = require('../models/Feedback');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const createError = (statusCode, message) => {
@@ -130,7 +131,7 @@ const createSession = async (req, res, next) => {
 // @access  Public (published expos) | Admin (any)
 const getSessionsByExpo = async (req, res, next) => {
   try {
-    const { expoId }        = req.params;
+    const { expoId } = req.params;
     const { page, limit, skip } = parsePagination(req.query);
     const { format, status, location, search, date, isFeatured } = req.query;
 
@@ -139,18 +140,17 @@ const getSessionsByExpo = async (req, res, next) => {
     }
 
     const isAdmin = req.user?.role === 'admin';
-    const filter  = { expoId };
+    const filter = { expoId };
 
     if (!isAdmin) filter.isPublic = true;
-    if (format)     filter.format   = format;
-    if (status)     filter.status   = { $in: status.split(',').map((s) => s.trim()) };
-    if (location)   filter.location = { $regex: location.trim(), $options: 'i' };
+    if (format) filter.format = format;
+    if (status) filter.status = { $in: status.split(',').map((s) => s.trim()) };
+    if (location) filter.location = { $regex: location.trim(), $options: 'i' };
     if (isFeatured) filter.isFeatured = isFeatured === 'true';
 
-    // Filter by a specific calendar date (YYYY-MM-DD)
     if (date) {
       const dayStart = new Date(date);
-      const dayEnd   = new Date(date);
+      const dayEnd = new Date(date);
       dayStart.setUTCHours(0, 0, 0, 0);
       dayEnd.setUTCHours(23, 59, 59, 999);
       filter.startTime = { $gte: dayStart, $lte: dayEnd };
@@ -158,41 +158,80 @@ const getSessionsByExpo = async (req, res, next) => {
 
     if (search?.trim()) filter.$text = { $search: search.trim() };
 
-    const [sessions, total] = await Promise.all([
-      Session.find(filter)
-        .select('+attendees -bookmarkedBy')
-        .sort({ startTime: 1, location: 1 })
-        .skip(skip)
-        .limit(limit)
-        .lean({ virtuals: true }),
-      Session.countDocuments(filter),
-    ]);
+    // ✅ Fetch sessions with attendees
+    const sessions = await Session.find(filter)
+      .select('+attendees') // Include attendees
+      .sort({ startTime: 1, location: 1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
 
-    // 🔑 Manually add attendeeCount since virtuals don't work with lean()
-const sessionsWithCount = sessions.map((s) => ({
-  ...s,
-  attendeeCount: s.attendees?.length ?? 0,
-  // Remove the heavy attendees array from the response
-  attendees: undefined,
-}));
+    const total = await Session.countDocuments(filter);
 
-    // Attach registration status for the requesting user
-let enrichedSessions = sessionsWithCount; // ← Changed from sessions
-if (req.user) {
-  const userId = req.user._id.toString();
-  const [registrations, bookmarks] = await Promise.all([
-    Session.find({ expoId, 'attendees.userId': req.user._id }).select('_id').lean(),
-    Session.find({ expoId, bookmarkedBy: req.user._id }).select('_id').lean(),
-  ]);
-  const registeredIds = new Set(registrations.map((s) => s._id.toString()));
-  const bookmarkedIds = new Set(bookmarks.map((s) => s._id.toString()));
+    // ✅ Get user's registrations for this expo
+    let registeredIds = new Set();
+    let attendedIds = new Set();
+    let bookmarkedIds = new Set();
 
-  enrichedSessions = sessionsWithCount.map((s) => ({
-    ...s,
-    isRegistered: registeredIds.has(s._id.toString()),
-    isBookmarked: bookmarkedIds.has(s._id.toString()),
-  }));
-}
+    if (req.user) {
+      const userId = req.user._id;
+      
+      // Get all sessions the user is registered for in this expo
+      const userRegistrations = await Session.find({
+        expoId,
+        'attendees.userId': userId
+      }).select('_id attendees').lean();
+      
+      userRegistrations.forEach(session => {
+        registeredIds.add(session._id.toString());
+        const attendee = session.attendees?.find(
+          (a) => a.userId.toString() === userId.toString()
+        );
+        if (attendee?.attended) {
+          attendedIds.add(session._id.toString());
+        }
+      });
+
+      // Get bookmarks
+      const bookmarks = await Session.find({ 
+        expoId, 
+        bookmarkedBy: userId 
+      }).select('_id').lean();
+      bookmarkedIds = new Set(bookmarks.map((s) => s._id.toString()));
+    }
+
+    // ✅ Build enriched sessions with feedback data
+    const enrichedSessions = await Promise.all(sessions.map(async (session) => {
+      const sessionId = session._id.toString();
+      const { attendees, ...sessionData } = session;
+
+      // Get average rating and feedback count
+      let averageRating = null;
+      let feedbackCount = 0;
+
+      try {
+        const avgResult = await Feedback.getAverageRating(session._id);
+        averageRating = avgResult?.average || null;
+        
+        feedbackCount = await Feedback.countDocuments({
+          sessionId: session._id,
+          status: 'approved',
+        });
+      } catch (err) {
+        // If Feedback model/methods don't exist yet, just skip
+        console.warn('Feedback enrichment skipped:', err.message);
+      }
+
+      return {
+        ...sessionData,
+        attendeeCount: attendees?.length || 0,
+        averageRating,
+        feedbackCount,
+        isRegistered: registeredIds.has(sessionId),
+        isAttended: attendedIds.has(sessionId),
+        isBookmarked: bookmarkedIds.has(sessionId),
+      };
+    }));
 
     res.setHeader('X-Total-Count', total);
 
@@ -204,13 +243,14 @@ if (req.user) {
           total,
           page,
           limit,
-          totalPages:  Math.ceil(total / limit),
+          totalPages: Math.ceil(total / limit),
           hasNextPage: page < Math.ceil(total / limit),
           hasPrevPage: page > 1,
         },
       },
     });
   } catch (err) {
+    console.error('❌ Error in getSessionsByExpo:', err);
     return next(err);
   }
 };
@@ -451,6 +491,8 @@ const registerForSession = async (req, res, next) => {
       success:      true,
       message:      `Successfully registered for "${session.title}".`,
       spotsRemaining: session.spotsRemaining,
+      isRegistered: true,
+      sessionId: session._id,
     });
   } catch (err) {
     if (err.message.includes('already registered') || err.message.includes('capacity')) {
@@ -591,7 +633,6 @@ const getMyBookmarks = async (req, res, next) => {
 
 // ─── @route   GET /api/v1/sessions/expo/:expoId/schedule ─────────────────────
 // @access  Public
-// Returns a room-grouped schedule object for the agenda view
 const getExpoSchedule = async (req, res, next) => {
   try {
     const { expoId } = req.params;
@@ -666,7 +707,6 @@ const getSessionAttendees = async (req, res, next) => {
 
 // ─── @route   GET /api/v1/sessions/me/speaking ───────────────────────────────
 // @access  Authenticated
-// Returns sessions where the current user is listed as a speaker
 const getMySpeakingSessions = async (req, res, next) => {
   try {
     const userId = req.user._id;

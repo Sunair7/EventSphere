@@ -25,6 +25,7 @@ const messageRoutes = require("./routes/message.routes");
 const analyticsRoutes = require("./routes/analytics.routes");
 const notificationRoutes = require('./routes/notification.routes');
 const paymentRoutes = require('./routes/payment.routes');
+const feedbackRoutes = require('./routes/feedback.routes');
 
 // ─── Socket Handler Import ────────────────────────────────────────────────────
 const initSocketHandlers = require("./config/socket");
@@ -161,6 +162,7 @@ app.use("/api/v1/exhibitors", exhibitorRoutes);
 app.use("/api/v1/messages", messageRoutes);
 app.use("/api/v1/analytics", analyticsRoutes);
 app.use('/api/v1/payments', paymentRoutes);
+app.use('/api/v1/feedback', feedbackRoutes);
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/api/v1/health', (_req, res) => {

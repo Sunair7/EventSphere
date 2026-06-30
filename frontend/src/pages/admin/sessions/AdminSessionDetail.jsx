@@ -7,15 +7,18 @@ import {
   MapPin, Mic2, BookOpen, Send, XCircle,
   AlertCircle, RefreshCw, ExternalLink,
   UserCheck, Tag, Wifi, Search, X,
+  Star,
 } from 'lucide-react';
 import { format, differenceInMinutes }          from 'date-fns';
 import toast                                    from 'react-hot-toast';
 import api                                      from '@/utils/api';
 import { cn }                                   from '@/utils/cn';
+import FeedbackList                             from '@/components/feedback/FeedbackList';
 
 // ─── Query keys ───────────────────────────────────────────────────────────────
 const sessionKey   = (id) => ['admin', 'sessions', 'detail', id];
 const attendeesKey = (id) => ['admin', 'sessions', id, 'attendees'];
+const feedbackKey  = (id) => ['feedback', 'session', id];
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_TRANSITIONS = {
@@ -146,6 +149,8 @@ export default function AdminSessionDetail() {
   const { id: expoId, sid } = useParams();
   const queryClient          = useQueryClient();
   const [attendeeSearch, setAttendeeSearch] = useState('');
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectingFeedbackId, setRejectingFeedbackId] = useState(null);
 
   // ── Fetch session ───────────────────────────────────────────────────────────
   const { data: session, isLoading, isError, refetch } = useQuery({
@@ -167,6 +172,20 @@ export default function AdminSessionDetail() {
     refetchInterval: session?.status === 'live' ? 30_000 : false,
   });
 
+  // ── Fetch feedback ──────────────────────────────────────────────────────────
+  const { 
+    data: feedbackData, 
+    isLoading: feedbackLoading,
+    refetch: refetchFeedback 
+  } = useQuery({
+    queryKey: feedbackKey(sid),
+    queryFn: async () => {
+      const { data } = await api.get(`/feedback/session/${sid}?includePending=true`);
+      return data.data;
+    },
+    enabled: !!sid,
+  });
+
   // ── Status transition mutation ──────────────────────────────────────────────
   const statusMutation = useMutation({
     mutationFn: (status) => api.patch(`/sessions/${sid}/status`, { status }),
@@ -176,6 +195,43 @@ export default function AdminSessionDetail() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'sessions', expoId] });
     },
     onError: (err) => toast.error(err.message || 'Failed to update status.'),
+  });
+
+  // ── Feedback mutations ──────────────────────────────────────────────────────
+  const deleteFeedbackMutation = useMutation({
+    mutationFn: (feedbackId) => api.delete(`/feedback/${feedbackId}`),
+    onSuccess: () => {
+      toast.success("Feedback deleted.");
+      refetchFeedback();
+    },
+    onError: (err) => {
+      toast.error(err.response?.data?.message || "Failed to delete.");
+    },
+  });
+
+  const approveFeedbackMutation = useMutation({
+    mutationFn: (feedbackId) => api.patch(`/feedback/${feedbackId}/approve`),
+    onSuccess: () => {
+      toast.success("Feedback approved.");
+      refetchFeedback();
+    },
+    onError: (err) => {
+      toast.error(err.response?.data?.message || "Failed to approve.");
+    },
+  });
+
+  const rejectFeedbackMutation = useMutation({
+    mutationFn: ({ id, reason }) => 
+      api.patch(`/feedback/${id}/reject`, { rejectionReason: reason }),
+    onSuccess: () => {
+      toast.success("Feedback rejected.");
+      setRejectingFeedbackId(null);
+      setRejectionReason('');
+      refetchFeedback();
+    },
+    onError: (err) => {
+      toast.error(err.response?.data?.message || "Failed to reject.");
+    },
   });
 
   // ── States ──────────────────────────────────────────────────────────────────
@@ -487,6 +543,122 @@ export default function AdminSessionDetail() {
           </div>
         )}
       </div>
+
+      {/* ── Feedback Section ─────────────────────────────────────── */}
+      <div className="card flex flex-col gap-4">
+        <div className="flex items-center justify-between border-b border-outline-variant pb-3">
+          <h3 className="text-headline-sm font-semibold text-on-surface flex items-center gap-2">
+            <Star size={18} className="text-warning fill-warning" />
+            Feedback ({feedbackData?.feedback?.length || 0})
+          </h3>
+          <div className="flex items-center gap-3">
+            {feedbackData?.stats && (
+              <span className="font-mono text-label-sm text-on-surface-variant">
+                Avg: {feedbackData.stats.average || 0} ⭐
+              </span>
+            )}
+            <button
+              onClick={() => refetchFeedback()}
+              className="btn-ghost btn-sm gap-1"
+              disabled={feedbackLoading}
+            >
+              <RefreshCw size={13} className={feedbackLoading ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
+
+        <FeedbackList
+          feedback={feedbackData?.feedback || []}
+          stats={feedbackData?.stats}
+          loading={feedbackLoading}
+          showActions={true}
+          isModerator={true}
+          onApprove={(id) => approveFeedbackMutation.mutate(id)}
+          onReject={(id) => {
+            setRejectingFeedbackId(id);
+            setRejectionReason('');
+          }}
+          onDelete={(id) => {
+            if (confirm("Delete this feedback? This action cannot be undone.")) {
+              deleteFeedbackMutation.mutate(id);
+            }
+          }}
+          emptyMessage="No feedback yet for this session."
+        />
+      </div>
+
+      {/* ── Rejection Modal ──────────────────────────────────────── */}
+      <AnimatePresence>
+        {rejectingFeedbackId && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+            onClick={() => setRejectingFeedbackId(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-md rounded-2xl border border-outline-variant bg-surface p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3 mb-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-error-container">
+                  <XCircle size={20} className="text-on-error-container" />
+                </div>
+                <div>
+                  <h3 className="text-headline-sm font-semibold text-on-surface">
+                    Reject Feedback
+                  </h3>
+                  <p className="text-body-sm text-on-surface-variant mt-1">
+                    Please provide a reason for rejecting this feedback.
+                  </p>
+                </div>
+              </div>
+
+              <textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="Enter rejection reason..."
+                className="input w-full min-h-[100px] text-body-sm"
+                rows={4}
+              />
+
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  onClick={() => {
+                    setRejectingFeedbackId(null);
+                    setRejectionReason('');
+                  }}
+                  className="btn-ghost btn-sm"
+                  disabled={rejectFeedbackMutation.isPending}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (!rejectionReason.trim()) {
+                      toast.error('Please provide a reason for rejection.');
+                      return;
+                    }
+                    rejectFeedbackMutation.mutate({ 
+                      id: rejectingFeedbackId, 
+                      reason: rejectionReason 
+                    });
+                  }}
+                  disabled={rejectFeedbackMutation.isPending || !rejectionReason.trim()}
+                  className="btn-danger btn-sm gap-1.5"
+                >
+                  <XCircle size={14} />
+                  {rejectFeedbackMutation.isPending ? 'Rejecting...' : 'Reject Feedback'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

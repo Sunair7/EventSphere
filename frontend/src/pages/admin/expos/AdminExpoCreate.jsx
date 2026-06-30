@@ -7,7 +7,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion }                   from 'framer-motion';
 import {
   ArrowLeft, Plus, X, LayoutGrid,
-  CalendarDays, MapPin, Info, Save, Image
+  CalendarDays, MapPin, Info, Save, Image,
+  DollarSign
 } from 'lucide-react';
 import toast                        from 'react-hot-toast';
 import api                          from '@/utils/api';
@@ -71,6 +72,11 @@ const createExpoSchema = z
     boothHeight: z
       .number({ invalid_type_error: 'Booth height must be a number.' })
       .min(1, 'Minimum 1 metre.')
+      .optional(),
+
+    boothPrice: z
+      .number({ invalid_type_error: 'Booth price must be a number.' })
+      .min(0, 'Price cannot be negative.')
       .optional(),
 
     maxAttendees: z
@@ -287,6 +293,7 @@ export default function AdminExpoCreate() {
       cols:                10,
       boothWidth:          3,
       boothHeight:         3,
+      boothPrice:          0,
       maxAttendees:        null,
       isPublic:            true,
     },
@@ -304,7 +311,6 @@ export default function AdminExpoCreate() {
     onSuccess: (expo) => {
       toast.success(`"${expo.title}" created successfully.`);
       queryClient.invalidateQueries({ queryKey: ['expos'] });
-      // Removed navigation from here so we can upload the banner first in onSubmit
     },
     onError: (err) => {
       toast.error(err.message || 'Failed to create expo. Please try again.');
@@ -335,6 +341,7 @@ export default function AdminExpoCreate() {
         boothWidth:  Number(values.boothWidth  || 3),
         boothHeight: Number(values.boothHeight || 3),
       },
+      boothPrice: values.boothPrice !== undefined ? Number(values.boothPrice) : 0,
       tags,
       maxAttendees: values.maxAttendees || undefined,
       isPublic:     values.isPublic,
@@ -356,8 +363,7 @@ export default function AdminExpoCreate() {
       
       navigate(`/admin/expos/${expo._id}`);
     } catch (error) {
-      // Error handling is managed by createMutation's onError, 
-      // but you could add banner-specific fallback logic here if needed.
+      // Error handling is managed by createMutation's onError
     }
   };
 
@@ -615,6 +621,46 @@ export default function AdminExpoCreate() {
                 className={cn('input', errors.boothHeight && 'input-error')}
               />
             </Field>
+          </div>
+
+          {/* Booth Pricing */}
+          <div className="space-y-2">
+            <h3 className="text-body-sm font-semibold text-on-surface flex items-center gap-2">
+              <DollarSign size={16} className="text-secondary" />
+              Booth Pricing
+            </h3>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {/* Booth Price */}
+              <Field 
+                label="Booth Price"
+                hint="Set to 0 for free booths. This price applies to all booths in this expo."
+                htmlFor="boothPrice" 
+                error={errors.boothPrice?.message}
+              >
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant font-mono text-label-sm">
+                    $
+                  </span>
+                  <input
+                    type="number"
+                    id="boothPrice"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    {...register('boothPrice', { valueAsNumber: true })}
+                    className={cn('input pl-8', errors.boothPrice && 'input-error')}
+                  />
+                </div>
+              </Field>
+
+              {/* Currency - hidden for now, default USD */}
+              <Field label="Currency" hint="Currently only USD is supported.">
+                <div className="input bg-surface-container text-on-surface font-mono flex items-center">
+                  USD
+                </div>
+              </Field>
+            </div>
           </div>
 
           {/* Live preview */}

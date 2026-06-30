@@ -35,6 +35,7 @@ const AdminMessages        = lazy(() => import('@/pages/admin/messages/AdminMess
 const AdminAnalytics       = lazy(() => import('@/pages/admin/analytics/AdminAnalytics'));
 const AdminUsers           = lazy(() => import('@/pages/admin/users/AdminUsers'));
 const AdminUserDetail      = lazy(() => import('@/pages/admin/users/AdminUserDetail'));
+const FeedbackModeration   = lazy(() => import('@/components/feedback/FeedbackModeration'));
 
 // ── Exhibitor Pages ───────────────────────────────────────────────────────────
 const ExhibitorDashboard   = lazy(() => import('@/pages/exhibitor/ExhibitorDashboard'));
@@ -168,7 +169,8 @@ function AnimatedRoutes() {
           <Route path="/admin/users/:id"                  element={<Lazy><AnimatedPage><AdminUserDetail /></AnimatedPage></Lazy>} />
           <Route path="/admin/settings"                   element={<Lazy><AnimatedPage><AccountSettings /></AnimatedPage></Lazy>} />
           <Route path="/admin/transactions"               element={<Lazy><AnimatedPage><TransactionHistory /></AnimatedPage></Lazy>} /> {/* ✅ ADD THIS */}
-          <Route path="/admin/transactions/:id" element={<Lazy><AnimatedPage><TransactionDetail /></AnimatedPage></Lazy>} />
+          <Route path="/admin/transactions/:id"           element={<Lazy><AnimatedPage><TransactionDetail /></AnimatedPage></Lazy>} />
+          <Route path="/admin/feedback"                   element={<Lazy><AnimatedPage><FeedbackModeration /></AnimatedPage></Lazy>} />
         </Route>
 
         {/* ── Exhibitor Routes ─────────────────────────────────────── */}

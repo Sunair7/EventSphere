@@ -6,13 +6,17 @@ const {
   createBoothPayment,
   createSessionPayment,
   confirmPayment,
+  confirmPendingTransaction,
   cancelTransaction,
+  payLaterTransaction,
+  getMyPendingTransactions,
   getTransactionHistory,
   getTransaction,
   getAllTransactions,
   confirmOnSitePayment,
   handleWebhook,
 } = require('../controllers/payment.controller');
+
 const { protect, authorizeRoles, requireEmailVerified } = require('../middleware/Auth.middleware');
 
 const router = express.Router();
@@ -91,11 +95,34 @@ router.post(
   createSessionPayment
 );
 
-// Confirm payment
+// Confirm payment (used after Stripe/mock/on-site completion)
 router.post(
   '/confirm',
   confirmPaymentValidation,
   confirmPayment
+);
+
+// Confirm a pending pay-later transaction (still pending but user wants to finalize)
+router.post(
+  '/confirm-pending',
+  [
+    body('transactionId')
+      .trim()
+      .notEmpty().withMessage('Transaction ID is required.')
+      .isMongoId().withMessage('Invalid transaction ID format.'),
+    body('paymentId')
+      .optional()
+      .trim(),
+  ],
+  confirmPendingTransaction
+);
+
+
+// Pay later (keep pending)
+router.post(
+  '/:transactionId/pay-later',
+  cancelTransactionValidation,
+  payLaterTransaction
 );
 
 // Cancel transaction
@@ -105,11 +132,18 @@ router.delete(
   cancelTransaction
 );
 
+// Get user's pending transactions (pay-later support)
+router.get(
+  '/me/pending',
+  getMyPendingTransactions
+);
+
 // Get user's transaction history
 router.get(
   '/history',
   getTransactionHistory
 );
+
 
 // ─── Admin Routes (must be before /:transactionId) ───────────────────────────
 router.get(

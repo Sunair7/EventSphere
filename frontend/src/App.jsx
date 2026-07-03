@@ -47,13 +47,14 @@ const ExhibitorSessions    = lazy(() => import('@/pages/exhibitor/sessions/Exhib
 const ExhibitorMessages    = lazy(() => import('@/pages/exhibitor/messages/ExhibitorMessages'));
 
 // ── Attendee Pages ────────────────────────────────────────────────────────────
-const AttendeeDashboard    = lazy(() => import('@/pages/attendee/AttendeeDashboard'));
-const AttendeeExpos        = lazy(() => import('@/pages/attendee/expos/AttendeeExpos'));
-const AttendeeExpoDetail   = lazy(() => import('@/pages/attendee/expos/AttendeeExpoDetail'));
-const AttendeeSessions     = lazy(() => import('@/pages/attendee/sessions/AttendeeSessions'));
-const AttendeeExhibitors   = lazy(() => import('@/pages/attendee/exhibitors/AttendeeExhibitors'));
-const AttendeeMessages     = lazy(() => import('@/pages/attendee/messages/AttendeeMessages'));
-const AttendeeSchedule     = lazy(() => import('@/pages/attendee/schedule/AttendeeSchedule'));
+const AttendeeDashboard     = lazy(() => import('@/pages/attendee/AttendeeDashboard'));
+const AttendeeExpos         = lazy(() => import('@/pages/attendee/expos/AttendeeExpos'));
+const AttendeeExpoDetail    = lazy(() => import('@/pages/attendee/expos/AttendeeExpoDetail'));
+const AttendeeSessions      = lazy(() => import('@/pages/attendee/sessions/AttendeeSessions'));
+const AttendeeExhibitors    = lazy(() => import('@/pages/attendee/exhibitors/AttendeeExhibitors'));
+const AttendeeMessages      = lazy(() => import('@/pages/attendee/messages/AttendeeMessages'));
+const AttendeeSchedule      = lazy(() => import('@/pages/attendee/schedule/AttendeeSchedule'));
+const AttendeeSessionDetail = lazy(() => import('@/pages/attendee/sessions/AttendeeSessionDetail'))
 
 // Shared across roles
 const AccountSettings      = lazy(() => import('@/pages/shared/AccountSettings'));
@@ -207,6 +208,7 @@ function AnimatedRoutes() {
           <Route path="/attendee/expos"                   element={<Lazy><AnimatedPage><AttendeeExpos /></AnimatedPage></Lazy>} />
           <Route path="/attendee/expos/:id"               element={<Lazy><AnimatedPage><AttendeeExpoDetail /></AnimatedPage></Lazy>} />
           <Route path="/attendee/sessions"                element={<Lazy><AnimatedPage><AttendeeSessions /></AnimatedPage></Lazy>} />
+          <Route path="/attendee/sessions/:id"           element={<Lazy><AnimatedPage><AttendeeSessionDetail /></AnimatedPage></Lazy>} />
           <Route path="/attendee/schedule"                element={<Lazy><AnimatedPage><AttendeeSchedule /></AnimatedPage></Lazy>} />
           <Route path="/attendee/exhibitors"              element={<Lazy><AnimatedPage><AttendeeExhibitors /></AnimatedPage></Lazy>} />
           <Route path="/attendee/messages"                element={<Lazy><AnimatedPage><AttendeeMessages /></AnimatedPage></Lazy>} />

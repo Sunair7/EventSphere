@@ -1,8 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { Bell, CheckCheck, X, Loader2 } from 'lucide-react';
+
+import { useAuth } from '@/context/AuthContext';
 import api from '@/utils/api';
 import { cn } from '@/utils/cn';
 
@@ -28,8 +30,9 @@ const NOTIFICATION_ICONS = {
 
 export default function NotificationPanel({ onClose }) {
   const queryClient = useQueryClient();
+  const { isLoading: authLoading } = useAuth();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading: notifLoading } = useQuery({
     queryKey: ['notifications', 'list'],
     queryFn: async () => {
       const { data } = await api.get('/notifications?limit=10');
@@ -61,22 +64,15 @@ export default function NotificationPanel({ onClose }) {
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -8, scale: 0.96 }}
       transition={{ duration: 0.15 }}
-      className="absolute right-0 top-12 z-50 w-80 sm:w-96 max-h-[70vh] overflow-hidden
-                 rounded-xl border border-outline-variant bg-surface-bright shadow-level-3"
+      className="absolute right-0 top-12 z-50 w-80 sm:w-96 max-h-[70vh] overflow-hidden rounded-xl border border-outline-variant bg-surface-bright shadow-level-3"
     >
-      {/* Header */}
       <div className="flex items-center justify-between border-b border-outline-variant px-4 py-3">
         <div className="flex items-center gap-2">
           <Bell size={16} className="text-secondary" />
-          <h3 className="text-body-sm font-semibold text-on-surface">
-            Notifications
-          </h3>
-          {unreadCount > 0 && (
-            <span className="badge badge-error text-label-sm">
-              {unreadCount} new
-            </span>
-          )}
+          <h3 className="text-body-sm font-semibold text-on-surface">Notifications</h3>
+          {unreadCount > 0 && <span className="badge badge-error text-label-sm">{unreadCount} new</span>}
         </div>
+
         <div className="flex items-center gap-1">
           {unreadCount > 0 && (
             <button
@@ -97,9 +93,8 @@ export default function NotificationPanel({ onClose }) {
         </div>
       </div>
 
-      {/* List */}
       <div className="overflow-y-auto max-h-[60vh]">
-        {isLoading ? (
+        {notifLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 size={20} className="animate-spin-slow text-on-surface-variant" />
           </div>
@@ -109,46 +104,58 @@ export default function NotificationPanel({ onClose }) {
             <p className="text-body-sm text-on-surface-variant">No notifications yet</p>
           </div>
         ) : (
-          notifications.map((notif) => (
-            <Link
-              key={notif._id}
-              to={notif.link || '#'}
-              onClick={() => {
-                if (!notif.isRead) markOneMutation.mutate(notif._id);
-                onClose();
-              }}
-              className={cn(
-                'flex items-start gap-3 px-4 py-3 border-b border-outline-variant/50',
-                'hover:bg-surface-container-low transition-colors',
-                !notif.isRead && 'bg-secondary-container/10'
-              )}
-            >
-              <span className="text-lg shrink-0 mt-0.5">
-                {NOTIFICATION_ICONS[notif.type] || 'ℹ️'}
-              </span>
-              <div className="flex-1 min-w-0">
-                <p className={cn(
-                  'text-body-sm line-clamp-2',
-                  !notif.isRead ? 'font-semibold text-on-surface' : 'text-on-surface'
-                )}>
-                  {notif.title}
-                </p>
-                {notif.body && (
-                  <p className="text-body-sm text-on-surface-variant line-clamp-1 mt-0.5">
-                    {notif.body}
-                  </p>
+          notifications.map((notif) => {
+            const target = notif.link || '#';
+
+            return (
+              <Link
+                key={notif._id}
+                to={target}
+                onClick={(e) => {
+                  // Defer navigation while auth context is still hydrating after refresh.
+                  // This prevents protected-route guards from redirecting to /unauthorised.
+                  if (authLoading) {
+                    e.preventDefault();
+                    return;
+                  }
+
+                  if (!notif.isRead) markOneMutation.mutate(notif._id);
+                  onClose();
+                }}
+                className={cn(
+                  'flex items-start gap-3 px-4 py-3 border-b border-outline-variant/50',
+                  'hover:bg-surface-container-low transition-colors',
+                  !notif.isRead && 'bg-secondary-container/10'
                 )}
-                <p className="font-mono text-label-sm text-on-surface-variant mt-1">
-                  {format(new Date(notif.createdAt), 'MMM d, HH:mm')}
-                </p>
-              </div>
-              {!notif.isRead && (
-                <span className="h-2 w-2 rounded-full bg-secondary shrink-0 mt-2" />
-              )}
-            </Link>
-          ))
+              >
+                <span className="text-lg shrink-0 mt-0.5">{NOTIFICATION_ICONS[notif.type] || 'ℹ️'}</span>
+
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={cn(
+                      'text-body-sm line-clamp-2',
+                      !notif.isRead ? 'font-semibold text-on-surface' : 'text-on-surface'
+                    )}
+                  >
+                    {notif.title}
+                  </p>
+
+                  {notif.body && (
+                    <p className="text-body-sm text-on-surface-variant line-clamp-1 mt-0.5">{notif.body}</p>
+                  )}
+
+                  <p className="font-mono text-label-sm text-on-surface-variant mt-1">
+                    {format(new Date(notif.createdAt), 'MMM d, HH:mm')}
+                  </p>
+                </div>
+
+                {!notif.isRead && <span className="h-2 w-2 rounded-full bg-secondary shrink-0 mt-2" />}
+              </Link>
+            );
+          })
         )}
       </div>
     </motion.div>
   );
 }
+

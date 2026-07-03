@@ -56,8 +56,8 @@ const NAV_CONFIG = {
     { label: "Dashboard", path: "/exhibitor/dashboard", icon: LayoutDashboard, tutorialClass: "dashboard-header" },
     { label: "My Profile", path: "/exhibitor/profile", icon: UserCircle, tutorialClass: "profile-tab" },
     { label: "Browse Expos", path: "/exhibitor/expos", icon: Compass, tutorialClass: "expos-tab" },
-    { label: "Floor Plan", path: "/exhibitor/expos/:id/floor-plan", icon: MapPin, tutorialClass: "floor-plan-tab" }, // ✅ ADDED floor-plan-tab
     { label: "Sessions", path: "/exhibitor/sessions", icon: BookOpen, tutorialClass: "sessions-tab" },
+    { label: "Transactions", path: "/exhibitor/transactions", icon: Ticket },
     { label: "Messages", path: "/exhibitor/messages", icon: MessageSquare },
     { label: "Settings", path: "/exhibitor/settings", icon: Settings },
   ],

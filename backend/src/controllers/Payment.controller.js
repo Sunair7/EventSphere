@@ -1,4 +1,4 @@
-'use strict';
+/* unchanged - placeholder */
 
 const mongoose = require('mongoose');
 const { validationResult } = require('express-validator');
@@ -294,7 +294,10 @@ const createSessionPayment = async (req, res, next) => {
       body: price > 0
         ? `You've registered for "${session.title}". Complete payment within 15 minutes to confirm.`
         : `You've registered for "${session.title}". No payment required.`,
-      link: `/attendee/sessions`,
+      // Pending session notifications must route to the correct role dashboard.
+      // Exhibitors share the same UI (ExhibitorSessions re-exports AttendeeSessions),
+      // but the route protection requires the correct role.
+      link: req.user?.role === 'exhibitor' ? `/exhibitor/sessions` : `/attendee/sessions`,
       referenceId: sessionId,
       referenceModel: 'Session',
     });
@@ -390,6 +393,98 @@ const confirmPayment = async (req, res, next) => {
     return next(err);
   }
 };
+
+// ── Pay later (keep transaction pending) ─────────────────────────────────────
+const payLaterTransaction = async (req, res, next) => {
+  try {
+    const { transactionId } = req.params;
+    const userId = req.user._id;
+
+    const transaction = await Transaction.findById(transactionId);
+    if (!transaction) {
+      return next(createError(404, 'Transaction not found.'));
+    }
+
+    // Ownership check
+    const isOwner = transaction.userId.toString() === userId.toString();
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
+      return next(createError(403, 'You do not have permission to update this transaction.'));
+    }
+
+    if (transaction.status !== 'pending') {
+      return next(createError(400, `Cannot set pay later when transaction is ${transaction.status}.`));
+    }
+
+    // Keep it pending (do not change amount/reference).
+    // If expiresAt exists, leave it. (Booth locks already expire server-side.)
+    return res.status(200).json({
+      success: true,
+      message: 'Transaction kept pending. You can pay later within the time window.',
+      data: transaction,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+// ── Confirm pending pay-later transaction ────────────────────────────────────
+// This is the missing link for “I paid later and now I want to confirm”.
+// Frontend can call this after Pay later, or anytime while status=pending.
+const confirmPendingTransaction = async (req, res, next) => {
+  try {
+    handleValidationErrors(req);
+
+    const { transactionId, paymentId } = req.body;
+    const userId = req.user._id;
+
+    // (ownership + status/expires checks below)
+
+
+    const transaction = await Transaction.findById(transactionId);
+    if (!transaction) {
+      return next(createError(404, 'Transaction not found.'));
+    }
+
+    // ✅ Only the reserving/registered party (or admin) can confirm
+    const isOwner = transaction.userId.toString() === userId.toString();
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
+      return next(createError(403, 'You do not have permission to confirm this payment.'));
+    }
+
+    if (transaction.status !== 'pending') {
+      return next(createError(400, `Cannot confirm when transaction is ${transaction.status}.`));
+    }
+
+    if (transaction.expiresAt && new Date() > new Date(transaction.expiresAt)) {
+      await transaction.cancel('Payment window expired');
+      return next(createError(400, 'Transaction has expired. Please start again.'));
+    }
+
+    // ✅ Free transactions
+    if (transaction.amount === 0 || (paymentId && String(paymentId).startsWith('free_'))) {
+      await transaction.markAsPaid('mock', paymentId || `free_${Date.now()}`);
+      await paymentService.handlePaymentSuccess(transaction);
+      return res.status(200).json({
+        success: true,
+        message: 'Reservation confirmed successfully! 🎉',
+        data: transaction,
+      });
+    }
+
+    // ✅ Paid transactions
+    const confirmed = await paymentService.confirmPayment(paymentId, transactionId);
+    return res.status(200).json({
+      success: true,
+      message: 'Payment confirmed successfully! 🎉',
+      data: confirmed,
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 
 // ── Cancel a transaction ─────────────────────────────────────────────────────
 const cancelTransaction = async (req, res, next) => {
@@ -680,15 +775,84 @@ const handleWebhook = async (req, res, next) => {
   }
 };
 
+// ─── Get user's pending transactions (pay-later support) ──────────────
+const getMyPendingTransactions = async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+    const { type } = req.query; // optional: booth_reservation | session_registration
+
+    const query = {
+      userId,
+      status: 'pending',
+    };
+
+    if (type) {
+      query.type = type;
+    }
+
+    // Only show unexpired pending transactions
+    query.expiresAt = { $gt: new Date() };
+
+    const transactions = await Transaction.find(query)
+      .populate('referenceId')
+      .populate('expoId', 'title')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Populate booth/session fields from referenceId based on referenceModel
+    const pending = transactions.map((t) => {
+      const base = {
+        ...t,
+        expoTitle: t.expoId?.title || null,
+      };
+
+      if (t.referenceModel === 'Booth') {
+        return {
+          ...base,
+          boothNumber: t.referenceId?.boothNumber || null,
+          reference: t.referenceId
+            ? { _id: t.referenceId._id, boothNumber: t.referenceId.boothNumber }
+            : null,
+        };
+      }
+
+      if (t.referenceModel === 'Session') {
+        return {
+          ...base,
+          sessionTitle: t.referenceId?.title || null,
+          reference: t.referenceId
+            ? { _id: t.referenceId._id, title: t.referenceId.title }
+            : null,
+        };
+      }
+
+      return base;
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        transactions: pending,
+      },
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
 // ─── Export ──────────────────────────────────────────────────────────────────
 module.exports = {
   createBoothPayment,
   createSessionPayment,
   confirmPayment,
+  confirmPendingTransaction,
   cancelTransaction,
+  payLaterTransaction,
   getTransactionHistory,
   getTransaction,
   getAllTransactions,
   confirmOnSitePayment,
+  getMyPendingTransactions,
   handleWebhook,
 };
+

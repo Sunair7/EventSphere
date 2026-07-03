@@ -168,16 +168,18 @@ function SessionCard({
 
     if (session.price > 0) {
       try {
+        // For paid sessions, backend registration is gated. Initiate payment flow.
         await createSessionPayment.mutateAsync({
           sessionId: session._id,
           paymentMethod: "mock",
         });
       } catch (error) {
-        console.error("Registration failed:", error);
+        console.error("Payment initiation failed:", error);
       } finally {
         setIsProcessing(false);
       }
     } else {
+      // Free sessions register directly.
       await onRegister();
       setIsProcessing(false);
     }
@@ -499,6 +501,10 @@ function SessionCard({
             });
           }}
           onCancel={() => {
+            setShowPaymentModal(false);
+          }}
+          onPayLater={() => {
+            // Keep transaction pending so user can pay within the 15-min window.
             setShowPaymentModal(false);
           }}
         />
@@ -857,11 +863,16 @@ export default function AttendeeSessions() {
   );
 
   // ── Mutations ────────────────────────────────────────────────────────────────
-  const registerMutation = useMutation({
+const registerMutation = useMutation({
     mutationFn: (sessionId) => api.post(`/sessions/${sessionId}/register`),
-    onSuccess: (_, sessionId) => {
+    onSuccess: (_, _sessionId) => {
       toast.success("Registered successfully! 🎉");
+
+      // Ensure every part of the UI that depends on registration/bookmark state updates immediately.
       queryClient.invalidateQueries({ queryKey: sessionKeys.myReg() });
+      queryClient.invalidateQueries({ queryKey: sessionKeys.myBookmarks() });
+
+      // Refresh the current session list page (this is what drives the cards).
       queryClient.invalidateQueries({
         queryKey: sessionKeys.list({
           page,
@@ -872,6 +883,10 @@ export default function AttendeeSessions() {
           limit: LIMIT,
         }),
       });
+
+      // Also refresh feedback for speaking sessions (these are shown on cards).
+      queryClient.invalidateQueries({ queryKey: ["feedback", "exhibitor", "sessions"] });
+
       setMutatingId(null);
     },
     onError: (err) => {
@@ -884,7 +899,10 @@ export default function AttendeeSessions() {
     mutationFn: (sessionId) => api.delete(`/sessions/${sessionId}/register`),
     onSuccess: () => {
       toast.success("Registration cancelled.");
+
       queryClient.invalidateQueries({ queryKey: sessionKeys.myReg() });
+      queryClient.invalidateQueries({ queryKey: sessionKeys.myBookmarks() });
+
       queryClient.invalidateQueries({
         queryKey: sessionKeys.list({
           page,
@@ -895,6 +913,9 @@ export default function AttendeeSessions() {
           limit: LIMIT,
         }),
       });
+
+      queryClient.invalidateQueries({ queryKey: ["feedback", "exhibitor", "sessions"] });
+
       setMutatingId(null);
     },
     onError: (err) => {
@@ -903,12 +924,25 @@ export default function AttendeeSessions() {
     },
   });
 
-  const bookmarkMutation = useMutation({
+const bookmarkMutation = useMutation({
     mutationFn: (sessionId) => api.post(`/sessions/${sessionId}/bookmark`),
     onSuccess: (res) => {
       const { isBookmarked } = res.data;
       toast.success(isBookmarked ? "Bookmarked! 🔖" : "Bookmark removed.");
+
+      // Bookmarks affect both the bookmark icon state on cards and the bookmark lists.
       queryClient.invalidateQueries({ queryKey: sessionKeys.myBookmarks() });
+      queryClient.invalidateQueries({
+        queryKey: sessionKeys.list({
+          page,
+          search,
+          format: format_,
+          expoId,
+          date,
+          limit: LIMIT,
+        }),
+      });
+
       setMutatingId(null);
     },
     onError: (err) => {

@@ -1,0 +1,8 @@
+EventSphere Credentials:
+
+
+Login Accounts (examples):
+  Admin:     admin1@eventsphere.io / Admin@1234!
+  Exhibitor: exhibitor1@eventsphere.io / Exhibitor@1234!
+  Attendee:  attendee1@eventsphere.io / Attendee@1234!
+─────────────────────────────────────────────────

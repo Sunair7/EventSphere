@@ -28,7 +28,7 @@ const paymentRoutes = require('./routes/payment.routes');
 const feedbackRoutes = require('./routes/feedback.routes');
 
 // ─── Socket Handler Import ────────────────────────────────────────────────────
-const initSocketHandlers = require("./config/socket");
+const initSocketHandlers = require("./config/Socket");
 
 // ─── Environment Validation ───────────────────────────────────────────────────
 const REQUIRED_ENV = [

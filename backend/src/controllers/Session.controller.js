@@ -66,9 +66,20 @@ const createSession = async (req, res, next) => {
     }
 
     const {
-      title, description, format, location,
-      startTime, endTime, speakers, tags,
-      maxCapacity, isPublic, isFeatured, streamUrl,
+      title,
+      description,
+      format,
+      location,
+      startTime,
+      endTime,
+      speakers,
+      tags,
+      maxCapacity,
+      isPublic,
+      isFeatured,
+      streamUrl,
+      price,
+      currency,
     } = req.body;
 
     const start = new Date(startTime);
@@ -105,6 +116,8 @@ const createSession = async (req, res, next) => {
       isPublic:     isPublic     !== undefined ? isPublic : true,
       isFeatured:   isFeatured   || false,
       streamUrl:    streamUrl    || null,
+      price:        price        !== undefined ? price : 0,
+      currency:     currency     || 'USD',
       createdBy:    req.user._id,
     });
 
@@ -482,10 +495,17 @@ const registerForSession = async (req, res, next) => {
       return next(createError(403, 'This session is not open for public registration.'));
     }
 
+    // If session is paid, require payment to confirm registration
+    if ((session.price || 0) > 0) {
+      return next(
+        createError(402, 'Payment required before registration for this paid session.')
+      );
+    }
+
     await session.registerAttendee(req.user._id);
 
     // Update the expo attendee count on first session registration for this user
-    await Expo.findByIdAndUpdate(session.expoId, { $inc: { attendeeCount: 0 } });
+    await Expo.findByIdAndUpdate(session.expoId, { $inc: { attendeeCount: 1 } });
 
     return res.status(200).json({
       success:      true,
@@ -519,6 +539,31 @@ const unregisterFromSession = async (req, res, next) => {
       return next(createError(422, 'Cannot unregister from a completed session.'));
     }
 
+    // ✅ For paid sessions: block unregistering once payment is confirmed.
+    // Confirmation is represented by a Transaction with:
+    // - type: 'session_registration'
+    // - referenceModel: 'Session'
+    // - referenceId: sessionId
+    // - userId: current user
+    // - status: 'paid'
+    if ((session.price || 0) > 0) {
+      const Transaction = require('../models/Transaction');
+
+      const hasPaidTxn = await Transaction.exists({
+        userId: req.user._id,
+        type: 'session_registration',
+        referenceId: session._id,
+        referenceModel: 'Session',
+        status: 'paid',
+      });
+
+      if (hasPaidTxn) {
+        return next(
+          createError(422, 'Cannot unregister from a paid session after payment is confirmed.')
+        );
+      }
+    }
+
     await session.unregisterAttendee(req.user._id);
 
     return res.status(200).json({
@@ -526,7 +571,7 @@ const unregisterFromSession = async (req, res, next) => {
       message: `Successfully unregistered from "${session.title}".`,
     });
   } catch (err) {
-    if (err.message.includes('not registered')) {
+    if (err.message?.includes('not registered')) {
       return next(createError(404, err.message));
     }
     return next(err);

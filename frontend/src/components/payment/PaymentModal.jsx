@@ -21,6 +21,7 @@ export default function PaymentModal({
   transaction,
   onSuccess,
   onCancel,
+  onPayLater,
   type,
   itemName,
   amount,
@@ -64,15 +65,29 @@ export default function PaymentModal({
     setError(null);
 
     try {
-      // ✅ For free booths, just confirm without payment
+      // ✅ Confirm (free or after pay-later)
+      // If transaction.status is pending, confirm via /payments/confirm-pending (works for booth + session)
+      if (transaction?.status === 'pending') { 
+        const endpoint = '/payments/confirm-pending';
+        const { data } = await api.post(endpoint, {
+          transactionId: transaction._id,
+          paymentId: isFree || paymentMethod === 'on_site' ? `free_${Date.now()}` : `mock_${Date.now()}`,
+        });
+        toast.success('Reservation confirmed successfully! 🎉');
+        onSuccess?.(data.data);
+        onClose();
+        return;
+      }
+
       if (isFree) {
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Mark as paid in backend
-        const { data } = await api.post('/payments/confirm', {
+
+        const endpoint = transaction?.status === 'pending' ? '/payments/confirm-pending' : '/payments/confirm';
+        const { data } = await api.post(endpoint, {
           transactionId: transaction._id,
           paymentId: `free_${Date.now()}`,
         });
+
 
         toast.success('Reservation confirmed! 🎉');
         onSuccess?.(data.data);
@@ -84,11 +99,13 @@ export default function PaymentModal({
       if (paymentMethod === 'mock') {
         // Simulate payment processing with a nice loading animation
         await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        const { data } = await api.post('/payments/confirm', {
+
+        const endpoint = transaction?.status === 'pending' ? '/payments/confirm-pending' : '/payments/confirm';
+        const { data } = await api.post(endpoint, {
           transactionId: transaction._id,
           paymentId: `mock_${Date.now()}`,
         });
+
 
         toast.success('Payment successful! 🎉');
         onSuccess?.(data.data);
@@ -99,10 +116,7 @@ export default function PaymentModal({
       if (paymentMethod === 'on_site') {
         toast.success('Reservation confirmed! Pay at the venue.');
         // For on-site, we just confirm the transaction
-        const { data } = await api.post('/payments/confirm', {
-          transactionId: transaction._id,
-          paymentId: `onsite_${Date.now()}`,
-        });
+        const endpoint = transaction?.status === 'pending' ? '/payments/confirm-pending' : '/payments/confirm';
         onSuccess?.(data.data);
         onClose();
         return;
@@ -125,11 +139,18 @@ export default function PaymentModal({
   };
 
  
-const handleCancel = async () => {
-  if (isProcessing) return;
-  onCancel?.();
-  onClose();
-};
+  const handleCancel = async () => {
+    if (isProcessing) return;
+    onCancel?.();
+    onClose();
+  };
+
+  const handlePayLater = async () => {
+    if (isProcessing) return;
+    // Pay later = user closes the modal but transaction remains pending.
+    onPayLater?.();
+    onClose();
+  };
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -150,8 +171,8 @@ const handleCancel = async () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            onClick={isProcessing ? undefined : onClose}
             className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm"
-            onClick={onClose}
           />
 
           {/* Modal */}
@@ -171,8 +192,9 @@ const handleCancel = async () => {
                   </h2>
                 </div>
                 <button
-                  onClick={onClose}
-                  className="rounded p-1 text-on-surface-variant hover:bg-surface-container transition-colors"
+                  onClick={isProcessing ? undefined : onClose}
+                  disabled={isProcessing}
+                  className="rounded p-1 text-on-surface-variant hover:bg-surface-container transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <X size={18} />
                 </button>
@@ -180,6 +202,23 @@ const handleCancel = async () => {
 
               {/* Body */}
               <div className="p-4 space-y-4">
+                {/* Irreversible warning */}
+                <div className="flex items-start gap-2 rounded-lg bg-error-container/20 px-3 py-2">
+                  <AlertCircle size={14} className="text-error shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-body-sm font-medium text-on-error-container">
+                      {isFree
+                        ? 'Important: Confirming your free reservation cannot be undone.'
+                        : 'Important: Once you confirm, this payment/reservation cannot be undone.'}
+                    </p>
+                    {!isExpired && (
+                      <p className="text-label-sm text-on-error-container/90 mt-1">
+                        You have a limited time to complete payment. If you’re not ready, you can choose “Pay later”.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
                 {/* Item details */}
                 <div className="rounded-lg bg-surface-container p-3">
                   <p className="text-body-sm text-on-surface-variant">Item</p>
@@ -277,14 +316,24 @@ const handleCancel = async () => {
               </div>
 
               {/* Footer */}
-              <div className="flex gap-2 border-t border-outline-variant p-4">
+      <div className="flex gap-2 border-t border-outline-variant p-4">
                 <button
                   onClick={handleCancel}
-                  disabled={isProcessing}
+                  disabled={isProcessing || isExpired}
                   className="btn-ghost flex-1"
                 >
                   Cancel
                 </button>
+
+                {!isExpired && (
+                  <button
+                    onClick={handlePayLater}
+                    disabled={isProcessing}
+                    className="btn-ghost flex-1"
+                  >
+                    Pay later
+                  </button>
+                )}
 
                 <button
                   onClick={handlePayment}

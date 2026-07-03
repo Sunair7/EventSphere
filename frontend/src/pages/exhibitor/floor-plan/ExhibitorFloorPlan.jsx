@@ -88,8 +88,13 @@ function BoothCell({ booth, userId, selected, scale, isReserving, onReserve }) {
   const isLocked =
     booth.lockedUntil && new Date(booth.lockedUntil) > new Date() && !isOwn;
   const isSelected = selected?._id === booth._id;
-  const canSelect = booth.status === "available" && !isLocked;
+const canSelect = booth.status === "available" && !isLocked;
   const isThisReserving = isReserving === booth._id;
+
+  // Exhibitor: allow selecting booths that are pending ONLY if it's owned by this exhibitor
+  const canInteract = booth.status === 'pending' && isOwn;
+  const canSelectPendingOwn = canInteract;
+  const isClickable = canSelect || canSelectPendingOwn;
 
   const cellPx = Math.max(44, Math.round(60 * scale));
   const styles = cellStyle(booth.status, isOwn, isLocked, isSelected);
@@ -97,13 +102,17 @@ function BoothCell({ booth, userId, selected, scale, isReserving, onReserve }) {
   return (
     <motion.button
       layout
-      whileHover={canSelect && !isThisReserving ? { scale: 1.06 } : {}}
-      whileTap={canSelect && !isThisReserving ? { scale: 0.95 } : {}}
+      whileHover={(canSelect || canSelectPendingOwn) && !isThisReserving ? { scale: 1.06 } : {}}
+      whileTap={(canSelect || canSelectPendingOwn) && !isThisReserving ? { scale: 0.95 } : {}}
+
       transition={{ duration: 0.1 }}
       onClick={() => {
         if (canSelect) onReserve(booth);
+        if (!canSelect && canSelectPendingOwn) onReserve(booth);
       }}
-      disabled={(!canSelect && !isOwn) || isThisReserving}
+      disabled={!isClickable || isThisReserving}
+
+
       aria-label={`Booth ${booth.boothNumber} — ${isOwn ? "yours" : booth.status}`}
       aria-pressed={isSelected}
       style={{ width: cellPx, height: cellPx }}
@@ -367,6 +376,7 @@ function GridSkeleton() {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function ExhibitorFloorPlan() {
+
   const { id: expoId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();

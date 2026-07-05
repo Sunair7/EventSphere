@@ -6,7 +6,7 @@ import {
   CalendarDays, LayoutGrid, Users, MessageSquare,
   BarChart3, ShieldCheck, ArrowRight, Building2,
   Ticket, MapPin, BookOpen, Zap, Globe,
-  CheckCircle2, Star, Sparkles,
+  CheckCircle2, Star, Sparkles, Image,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import api from '@/utils/api';
@@ -237,35 +237,60 @@ function FeatureCard({ icon: Icon, title, description, color }) {
 
 // ─── Expo preview card ────────────────────────────────────────────────────────
 function ExpoPreviewCard({ expo, index }) {
+  const gradients = [
+    'from-secondary/25 via-surface-container-low to-secondary/5',
+    'from-tertiary/25 via-surface-container-low to-tertiary/5',
+    'from-primary/25 via-surface-container-low to-primary/5',
+  ];
+  const gradient = gradients[index % gradients.length];
+
   return (
     <motion.div
       variants={fadeUp}
       transition={{ delay: index * 0.07 }}
       whileHover={{ y: -4, transition: { duration: 0.2 } }}
-      className="card flex flex-col gap-3 hover:shadow-level-2 transition-shadow duration-200 group"
+      className="card flex flex-col gap-3 overflow-hidden hover:shadow-level-2 transition-shadow duration-200 group"
     >
-      <div className="flex items-start justify-between gap-2">
-        <span className={cn(
-          'badge',
-          expo.status === 'ongoing' ? 'badge-success' : 'badge-info'
-        )}>
-          {expo.status === 'ongoing' ? (
-            <span className="flex items-center gap-1">
-              <motion.span
-                className="h-1.5 w-1.5 rounded-full bg-success"
-                animate={{ opacity: [1, 0.3, 1] }}
-                transition={{ duration: 1.5, repeat: Infinity }}
-              />
-              Live Now
-            </span>
-          ) : (
-            format(new Date(expo.startDate), 'MMM d, yyyy')
-          )}
-        </span>
-        {expo.theme && (
-          <span className="font-mono text-label-sm text-on-surface-variant line-clamp-1">
-            {expo.theme}
+      {/* Banner */}
+      <div className="relative -mx-6 -mt-6 mb-1 h-40 overflow-hidden">
+        {expo.banner?.url ? (
+          <img
+            src={expo.banner.url}
+            alt={expo.banner.altText || expo.title}
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+            loading="lazy"
+          />
+        ) : (
+          <div className={cn('h-full w-full bg-gradient-to-br flex items-center justify-center', gradient)}>
+            <Image size={32} className="text-on-surface-variant/15" />
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+        <div className="absolute top-3 left-3">
+          <span className={cn(
+            'badge shadow-sm backdrop-blur-sm border-0',
+            expo.status === 'ongoing' ? 'bg-success/90 text-white' : 'bg-white/20 text-white'
+          )}>
+            {expo.status === 'ongoing' ? (
+              <span className="flex items-center gap-1">
+                <motion.span
+                  className="h-1.5 w-1.5 rounded-full bg-white"
+                  animate={{ opacity: [1, 0.3, 1] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                />
+                Live Now
+              </span>
+            ) : (
+              format(new Date(expo.startDate), 'MMM d, yyyy')
+            )}
           </span>
+        </div>
+        {expo.theme && (
+          <div className="absolute bottom-3 left-3">
+            <span className="badge bg-black/30 text-white backdrop-blur-sm border border-white/10 text-label-sm">
+              {expo.theme}
+            </span>
+          </div>
         )}
       </div>
 
@@ -291,9 +316,16 @@ function ExpoPreviewCard({ expo, index }) {
       </div>
 
       <Link
-        to="/register"
+        to={`/events/expos/${expo._id}`}
         className="btn-ghost btn-sm gap-1 mt-1 self-start group-hover:text-secondary
                    group-hover:border-secondary transition-colors"
+      >
+        Explore sessions <ArrowRight size={13} />
+      </Link>
+      <Link
+        to="/login"
+        state={{ from: '/register', registerExpoId: expo?._id }}
+        className="btn-secondary btn-sm gap-1 self-start mt-2"
       >
         Register to attend <ArrowRight size={13} />
       </Link>
@@ -481,15 +513,14 @@ export default function LandingPage() {
         {/* Animated gradient orbs */}
         <GradientOrbs />
         
-        {/* Grid pattern overlay */}
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: 'linear-gradient(#ffffff 1px, transparent 1px), linear-gradient(90deg, #ffffff 1px, transparent 1px)',
-            backgroundSize: '48px 48px',
-          }}
-          aria-hidden="true"
-        />
+        {/* Background banner image overlay */}
+<div
+  className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-15" // <-- Fixed opacity and added alignment classes
+  style={{
+    backgroundImage: "url('/banner.jpg')", // <-- Wrapped in url()
+  }}
+  aria-hidden="true"
+/>
 
         {/* Floating dashboard mockup */}
         <FloatingDashboardMock />
@@ -582,7 +613,7 @@ export default function LandingPage() {
         </div>
 
         {/* Bottom fade gradient */}
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-surface-container-low to-transparent pointer-events-none" />
+        {/* <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-surface-container-low to-transparent pointer-events-none" /> */}
       </section>
 
       {/* ── Stats bar with animated counters ──────────────────────── */}
@@ -634,7 +665,7 @@ export default function LandingPage() {
                     Discover upcoming expos
                   </h2>
                 </div>
-                <Link to="/register" className="btn-ghost gap-1.5 shrink-0">
+                <Link to="/events" className="btn-ghost gap-1.5 shrink-0">
                   View all events <ArrowRight size={14} />
                 </Link>
               </motion.div>

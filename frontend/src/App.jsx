@@ -107,6 +107,21 @@ const Lazy = ({ children }) => (
   <Suspense fallback={<PageLoader />}>{children}</Suspense>
 );
 
+// ─── Padded content wrapper for public pages reusing dashboard-style pages ────
+// PublicLayout's <Outlet /> is unpadded (LandingPage manages its own full-bleed
+// sections), but pages like AttendeeExpos/AttendeeSessions expect the same
+// mx-auto/max-w-container/px-container-pad/py-section-gap wrapper DashboardLayout
+// provides. Without it their content sits flush against the viewport edges.
+const PublicPage = ({ children }) => (
+  <Lazy>
+    <AnimatedPage>
+      <div className="mx-auto w-full max-w-container px-container-pad py-section-gap">
+        {children}
+      </div>
+    </AnimatedPage>
+  </Lazy>
+);
+
 // ─── Role → default dashboard path ───────────────────────────────────────────
 export const ROLE_HOME = {
   admin:     '/admin/dashboard',
@@ -133,6 +148,12 @@ function AnimatedRoutes() {
               </Lazy>
             }
           />
+
+          {/* ── Public event browsing (no login required) ──────────── */}
+          <Route path="/events"              element={<PublicPage><AttendeeExpos /></PublicPage>} />
+          <Route path="/events/expos/:id"    element={<PublicPage><AttendeeExpoDetail /></PublicPage>} />
+          <Route path="/events/sessions"     element={<PublicPage><AttendeeSessions /></PublicPage>} />
+          <Route path="/events/sessions/:id" element={<PublicPage><AttendeeSessionDetail /></PublicPage>} />
         </Route>
 
         {/* ── Auth Routes (redirect if already logged in) ──────────── */}

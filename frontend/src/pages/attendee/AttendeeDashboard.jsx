@@ -7,7 +7,7 @@ import {
   MessageSquare, MapPin, ArrowRight, Clock,
   Building2, Users, TrendingUp, ChevronRight,
   Sparkles, Star, Zap, Globe, Ticket,
-  ArrowUpRight, Play, Pause,
+  ArrowUpRight, Play, Pause, Search, Filter, X,
 } from 'lucide-react';
 import {
   format, isFuture, isPast, differenceInDays,
@@ -147,6 +147,16 @@ function HeroSection({ greeting, userName, expos }) {
     <div className="relative -mx-container-pad -mt-section-gap overflow-hidden">
       {/* Background */}
          <div className="relative h-[420px] sm:h-[500px] bg-gradient-to-br from-primary via-primary/95 to-secondary/80 overflow-hidden">
+        
+        {/* NEW: Banner Image Layer */}
+  <div
+    className="pointer-events-none absolute inset-0 bg-cover bg-center mix-blend-overlay opacity-15"
+    style={{
+      backgroundImage: "url('/banner.jpg')",
+    }}
+    aria-hidden="true"
+  />
+        
         {/* Animated orbs */}
         <motion.div
           className="absolute top-1/4 left-1/4 w-72 h-72 rounded-full blur-3xl"
@@ -261,7 +271,7 @@ function HeroSection({ greeting, userName, expos }) {
         </div>
 
         {/* Bottom gradient fade */}
-        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-background to-transparent" />
+        {/* <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-background to-transparent" /> */}
       </div>
     </div>
   );
@@ -506,6 +516,9 @@ export default function AttendeeDashboard() {
   const { data: sessions = [], isLoading: sessionLoading } = useMyRegistrations();
   const { data: bookmarks = [], isLoading: bookmarkLoading } = useMyBookmarks();
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedExpoId, setSelectedExpoId] = useState('');
+
   const { upcomingSessions, pastSessions } = useMemo(() => ({
     upcomingSessions: sessions
       .filter((s) => isFuture(new Date(s.endTime)) || s.status === 'live')
@@ -522,12 +535,157 @@ export default function AttendeeDashboard() {
     [bookmarks]
   );
 
+  // Search functionality
+  const { data: searchResults, isLoading: searchLoading } = useQuery({
+    queryKey: ['dashboard-search', searchQuery, selectedExpoId],
+    queryFn: async () => {
+      if (!searchQuery || searchQuery.length < 2) return { expos: [], sessions: [] };
+      
+      const results = { expos: [], sessions: [] };
+      
+      // Search expos
+      const expoParams = new URLSearchParams();
+      expoParams.set('status', 'published,ongoing');
+      expoParams.set('limit', '5');
+      expoParams.set('search', searchQuery);
+      if (selectedExpoId) expoParams.set('expoId', selectedExpoId);
+      
+      try {
+        const { data: expoData } = await api.get(`/expos?${expoParams}`);
+        results.expos = expoData.data.expos || [];
+      } catch (error) {
+        console.error('Error searching expos:', error);
+      }
+
+      // Search sessions if expo selected
+      if (selectedExpoId) {
+        const sessionParams = new URLSearchParams();
+        sessionParams.set('limit', '5');
+        sessionParams.set('search', searchQuery);
+        
+        try {
+          const { data: sessionData } = await api.get(`/sessions/expo/${selectedExpoId}?${sessionParams}`);
+          results.sessions = sessionData.data.sessions || [];
+        } catch (error) {
+          console.error('Error searching sessions:', error);
+        }
+      }
+
+      return results;
+    },
+    enabled: searchQuery.length >= 2,
+    staleTime: 30000,
+  });
+
   const greetingHour = new Date().getHours();
   const greeting = greetingHour < 12
     ? 'Good morning'
     : greetingHour < 18
     ? 'Good afternoon'
     : 'Good evening';
+
+  // Quick Search Component
+  function QuickSearch() {
+    if (!searchQuery || searchQuery.length < 2) return null;
+
+    const hasResults = searchResults?.expos?.length > 0 || searchResults?.sessions?.length > 0;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="card p-4 mb-6"
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-body-sm font-semibold text-on-surface flex items-center gap-2">
+            <Search size={16} className="text-secondary" />
+            Search Results for "{searchQuery}"
+          </h3>
+          <button
+            onClick={() => setSearchQuery('')}
+            className="text-on-surface-variant hover:text-on-surface"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {searchLoading ? (
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="skeleton h-16 rounded-lg" />
+            ))}
+          </div>
+        ) : !hasResults ? (
+          <p className="text-body-sm text-on-surface-variant text-center py-6">
+            No results found for "{searchQuery}"
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {/* Expos Results */}
+            {searchResults.expos.length > 0 && (
+              <div>
+                <p className="text-label-sm text-on-surface-variant mb-2">Expos</p>
+                <div className="space-y-2">
+                  {searchResults.expos.map((expo) => (
+                    <Link
+                      key={expo._id}
+                      to={`/attendee/expos/${expo._id}`}
+                      className="flex items-center justify-between p-3 rounded-lg border border-outline-variant hover:border-secondary/30 hover:bg-surface-container-low transition-all"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-body-sm font-medium text-on-surface line-clamp-1">
+                          {expo.title}
+                        </p>
+                        <p className="text-label-sm text-on-surface-variant">
+                          {expo.address?.city}, {expo.address?.country} · {expo.sessionCount ?? 0} sessions
+                        </p>
+                      </div>
+                      <ArrowRight size={14} className="text-on-surface-variant shrink-0 ml-2" />
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Sessions Results */}
+            {searchResults.sessions.length > 0 && (
+              <div>
+                <p className="text-label-sm text-on-surface-variant mb-2">Sessions</p>
+                <div className="space-y-2">
+                  {searchResults.sessions.map((session) => (
+                    <Link
+                      key={session._id}
+                      to={`/attendee/sessions?expoId=${selectedExpoId}`}
+                      className="flex items-center justify-between p-3 rounded-lg border border-outline-variant hover:border-tertiary/30 hover:bg-surface-container-low transition-all"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-body-sm font-medium text-on-surface line-clamp-1">
+                          {session.title}
+                        </p>
+                        <p className="text-label-sm text-on-surface-variant">
+                          {format(new Date(session.startTime), 'MMM d, HH:mm')} · {session.location}
+                        </p>
+                      </div>
+                      <ArrowRight size={14} className="text-on-surface-variant shrink-0 ml-2" />
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {hasResults && (
+              <Link
+                to="/attendee/expos"
+                className="text-body-sm text-secondary hover:text-secondary/80 flex items-center gap-1 mt-2"
+              >
+                View all results <ArrowRight size={14} />
+              </Link>
+            )}
+          </div>
+        )}
+      </motion.div>
+    );
+  }
 
   return (
     <div className="flex flex-col">
@@ -543,7 +701,8 @@ export default function AttendeeDashboard() {
         />
       )}
 
-      <div className="flex flex-col gap-section-gap mt-section-gap">
+
+      <div className="flex flex-col gap-section-gap">
 
         {/* ── Stats Row ────────────────────────────────────────────── */}
         <motion.div
@@ -791,34 +950,34 @@ export default function AttendeeDashboard() {
           </h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <QuickAction
-              icon={Compass}
-              label="Browse Events"
-              description="Discover upcoming expos"
+              icon={Search}
+              label="Search Events"
+              description="Find expos & sessions"
               to="/attendee/expos"
               delay={0}
               color="bg-secondary text-white"
             />
             <QuickAction
-              icon={BookOpen}
-              label="All Sessions"
-              description="Explore talks & workshops"
-              to="/attendee/sessions"
+              icon={CalendarDays}
+              label="My Schedule"
+              description="View registered sessions"
+              to="/attendee/schedule"
               delay={0.05}
               color="bg-tertiary text-white"
+            />
+            <QuickAction
+              icon={BookOpen}
+              label="Browse Sessions"
+              description="Explore talks & workshops"
+              to="/attendee/sessions"
+              delay={0.1}
+              color="bg-primary text-white"
             />
             <QuickAction
               icon={Building2}
               label="Exhibitors"
               description="Meet companies & brands"
               to="/attendee/exhibitors"
-              delay={0.1}
-              color="bg-primary text-white"
-            />
-            <QuickAction
-              icon={MessageSquare}
-              label="Messages"
-              description="Chat with organisers"
-              to="/attendee/messages"
               delay={0.15}
             />
           </div>

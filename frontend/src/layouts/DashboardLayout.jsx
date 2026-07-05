@@ -113,8 +113,8 @@ function Sidebar({
   return (
     <aside
       className={cn(
-        "flex h-full flex-col bg-primary transition-all duration-300 ease-in-out",
-        collapsed && !isMobile ? "w-[72px]" : "w-sidebar",
+        "flex h-full flex-col bg-primary transition-all duration-300 ease-in-out overflow-hidden", // Added overflow-hidden
+        collapsed && !isMobile ? "w-0" : "w-sidebar", // Changed "w-[72px]" to "w-0"
       )}
     >
       <div
@@ -488,31 +488,34 @@ export default function DashboardLayout({ role }) {
         />
       </div>
       <AnimatePresence>
-        {mobileNavOpen && (
-          <>
-            <motion.div
-              key="mobile-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-sidebar bg-primary/60 backdrop-blur-sm lg:hidden"
-              onClick={closeNav}
-              aria-hidden="true"
-            />
-            <motion.div
-              key="mobile-drawer"
-              initial={{ x: "-100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "-100%" }}
-              transition={{ type: "spring", damping: 28, stiffness: 280 }}
-              className="fixed inset-y-0 left-0 z-sidebar flex lg:hidden"
-            >
-              <Sidebar role={role} onClose={closeNav} isMobile />
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+  {mobileNavOpen && (
+    <>
+      {/* Backdrop overlay — Removed backdrop-blur-sm to prevent full-screen blur */}
+      <motion.div
+        key="mobile-backdrop"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        className="fixed inset-0 z-[99] bg-primary/75 lg:hidden" // <-- Changed from bg-primary/60 backdrop-blur-sm
+        onClick={closeNav}
+        aria-hidden="true"
+      />
+      
+      {/* Drawer Container */}
+      <motion.div
+        key="mobile-drawer"
+        initial={{ x: "-100%" }}
+        animate={{ x: 0 }}
+        exit={{ x: "-100%" }}
+        transition={{ type: "spring", damping: 28, stiffness: 280 }}
+        className="fixed inset-y-0 left-0 z-[100] flex lg:hidden"
+      >
+        <Sidebar role={role} onClose={closeNav} isMobile />
+      </motion.div>
+    </>
+  )}
+</AnimatePresence>
       <div className="flex flex-1 flex-col overflow-hidden">
         <TopBar
           role={role}

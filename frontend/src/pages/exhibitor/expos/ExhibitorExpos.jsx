@@ -188,6 +188,9 @@ function ExpoBanner({ banner, title, status, theme }) {
             Live Now
           </span>
         )}
+        {status === "completed" && (
+          <span className="badge badge-neutral">Ended</span>
+        )}
       </div>
 
       {theme && (
@@ -217,10 +220,10 @@ function ExpoCard({ expo, index }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.3, delay: index * 0.05, ease: [0.4, 0, 0.2, 1] }}
-      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+      whileHover={!isCompleted ? { y: -4, transition: { duration: 0.2 } } : {}}
       className={cn(
         "card flex flex-col gap-3 hover:shadow-level-2 transition-all duration-300 group overflow-hidden",
-        isCompleted && "opacity-70 hover:opacity-90",
+        isCompleted && "opacity-60 hover:opacity-70 border-outline-variant/50",
         isOngoing && "ring-1 ring-success/20",
       )}
     >
@@ -255,7 +258,12 @@ function ExpoCard({ expo, index }) {
       )}
 
       {/* Title */}
-      <h3 className="text-body-md font-semibold text-on-surface line-clamp-2 leading-snug group-hover:text-secondary transition-colors">
+      <h3 className={cn(
+        "text-body-md font-semibold line-clamp-2 leading-snug transition-colors",
+        isCompleted 
+          ? "text-on-surface-variant" 
+          : "text-on-surface group-hover:text-secondary"
+      )}>
         {expo.title}
       </h3>
 
@@ -274,13 +282,18 @@ function ExpoCard({ expo, index }) {
           <span>
             {format(startDate, "MMM d")} — {format(endDate, "MMM d, yyyy")}
           </span>
+          {isCompleted && (
+            <span className="ml-1.5 badge badge-neutral text-label-sm">
+              Ended
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Booth availability summary */}
+      {/* Booth availability summary - only show for active expos */}
       {isOpen && <BoothSummary expoId={expo._id} />}
 
-      {/* Sessions count */}
+      {/* Sessions count - for completed expos */}
       {!isOpen && (
         <div className="flex items-center gap-3 font-mono text-label-sm text-on-surface-variant">
           <div className="flex items-center gap-1">
@@ -318,31 +331,39 @@ function ExpoCard({ expo, index }) {
 
       {/* CTA */}
       <motion.div
-        whileHover={{ scale: 1.01 }}
-        whileTap={{ scale: 0.99 }}
+        whileHover={!isCompleted ? { scale: 1.01 } : {}}
+        whileTap={!isCompleted ? { scale: 0.99 } : {}}
         className="mt-auto"
       >
-        <Link
-          to={`/exhibitor/expos/${expo._id}`}
-          className={cn(
-            "btn gap-2 w-full justify-center transition-all duration-200",
-            isOpen
-              ? "btn-secondary group/btn"
-              : "btn-ghost",
-          )}
-        >
-          {isOpen ? (
-            <>
-              <LayoutGrid size={15} />
-              View Details & Apply
-              <ArrowRight size={14} className="transition-transform group-hover/btn:translate-x-1" />
-            </>
-          ) : (
-            <>
-              View Details <ArrowRight size={13} />
-            </>
-          )}
-        </Link>
+        {isCompleted ? (
+          <div className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-outline-variant 
+                          bg-surface-container px-4 py-2 text-body-sm font-medium text-on-surface-variant cursor-not-allowed">
+            <Clock size={14} />
+            Event Ended
+          </div>
+        ) : (
+          <Link
+            to={`/exhibitor/expos/${expo._id}`}
+            className={cn(
+              "btn gap-2 w-full justify-center transition-all duration-200",
+              isOpen
+                ? "btn-secondary group/btn"
+                : "btn-ghost",
+            )}
+          >
+            {isOpen ? (
+              <>
+                <LayoutGrid size={15} />
+                View Details & Apply
+                <ArrowRight size={14} className="transition-transform group-hover/btn:translate-x-1" />
+              </>
+            ) : (
+              <>
+                View Details <ArrowRight size={13} />
+              </>
+            )}
+          </Link>
+        )}
       </motion.div>
     </motion.div>
   );
@@ -380,8 +401,19 @@ export default function ExhibitorExpos() {
         sort: status === "completed" ? "start-desc" : "start-asc",
       });
       if (search) params.set("search", search);
-      if (status) params.set("status", status);
-      else params.set("status", "published,ongoing,completed");
+      
+      // ✅ Status handling: Only show completed when on Past tab
+      if (status === "completed") {
+        params.set("status", "completed");
+      } else if (status === "ongoing") {
+        params.set("status", "ongoing");
+      } else if (status === "published") {
+        params.set("status", "published");
+      } else {
+        // All Events - show published and ongoing (exclude completed)
+        params.set("status", "published,ongoing");
+      }
+      
       const { data } = await api.get(`/expos?${params}`);
       return data.data;
     },
@@ -425,8 +457,9 @@ export default function ExhibitorExpos() {
         <p className="text-body-sm text-on-primary-container">
           Your exhibitor application must be{" "}
           <span className="font-semibold">approved</span> before you can reserve
-          a booth. Each expo card shows live booth availability. Click{" "}
-          <span className="font-semibold">View Floor Plan & Apply</span> to
+          a booth. Each expo card shows live booth availability. Select an {" "}
+          <span className="font-semibold">Expo</span> then go to the {" "}
+          <span className="font-semibold">Interactive Floor Plan</span> to
           select your space.
         </p>
       </motion.div>

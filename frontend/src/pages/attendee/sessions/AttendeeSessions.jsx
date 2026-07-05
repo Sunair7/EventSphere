@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import {
@@ -124,6 +124,7 @@ function SessionCard({
   isMutating,
   index,
   expoId,
+  basePath = "/attendee",
 }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -162,13 +163,13 @@ function SessionCard({
   const averageRating = session.averageRating || 0;
   const feedbackCount = session.feedbackCount || 0;
 
-  const handleRegister = async () => {
+  const handleRegister = async (e) => {
+    e.stopPropagation(); // Prevent navigation
     if (isProcessing) return;
     setIsProcessing(true);
 
     if (session.price > 0) {
       try {
-        // For paid sessions, backend registration is gated. Initiate payment flow.
         await createSessionPayment.mutateAsync({
           sessionId: session._id,
           paymentMethod: "mock",
@@ -179,10 +180,27 @@ function SessionCard({
         setIsProcessing(false);
       }
     } else {
-      // Free sessions register directly.
       await onRegister();
       setIsProcessing(false);
     }
+  };
+
+  const handleUnregister = (e) => {
+    e.stopPropagation(); // Prevent navigation
+    onUnregister();
+  };
+
+  const handleBookmark = (e) => {
+    e.stopPropagation(); // Prevent navigation
+    onBookmark();
+  };
+
+  const handleFeedbackClick = (e) => {
+    e.stopPropagation(); // Prevent navigation
+    if (userFeedback) {
+      setSelectedFeedback(userFeedback);
+    }
+    setShowFeedbackForm(true);
   };
 
   return (
@@ -191,7 +209,6 @@ function SessionCard({
         layout
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95 }}
         transition={{
           duration: 0.25,
           delay: index * 0.04,
@@ -205,134 +222,141 @@ function SessionCard({
           isPastSes && "opacity-60",
         )}
       >
-        {/* Top row */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <motion.span
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{
-                type: "spring",
-                stiffness: 300,
-                delay: index * 0.04,
-              }}
-              className={cn(
-                "badge text-label-sm",
-                FORMAT_BADGE[session.format] || "badge-neutral",
-              )}
-            >
-              {session.format}
-            </motion.span>
-            {isLive && (
-              <span className="badge badge-success gap-1 text-label-sm">
-                <motion.span
-                  animate={{ opacity: [1, 0.3, 1] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                  className="h-1.5 w-1.5 rounded-full bg-success"
-                />
-                Live Now
-              </span>
-            )}
-            {session.isFeatured && (
-              <span className="badge badge-info gap-1 text-label-sm">
-                <Star size={10} /> Featured
-              </span>
-            )}
-            {session.price > 0 && (
-              <span className="badge badge-warning text-label-sm">
-                ${(session.price / 100).toFixed(2)}
-              </span>
-            )}
-            {isFull && !isRegistered && (
-              <span className="badge badge-error text-label-sm">Full</span>
-            )}
-            {session.status === "cancelled" && (
-              <span className="badge badge-error text-label-sm">Cancelled</span>
-            )}
-          </div>
-
-          {/* Time */}
-          <div className="flex items-center gap-1 font-mono text-label-sm text-on-surface-variant shrink-0">
-            <Clock size={11} />
-            <span>{format(new Date(session.startTime), "HH:mm")}</span>
-            <span>—</span>
-            <span>{format(new Date(session.endTime), "HH:mm")}</span>
-          </div>
-        </div>
-
-        {/* Title */}
-        <h3 className="text-body-md font-semibold text-on-surface line-clamp-2 leading-snug group-hover:text-secondary transition-colors">
-          {session.title}
-        </h3>
-
-        {/* Speakers */}
-        {session.speakers?.length > 0 && (
-          <div className="flex items-center gap-1.5 text-body-sm text-on-surface-variant">
-            <Mic2 size={13} className="shrink-0" />
-            <span className="line-clamp-1">
-              {session.speakers.map((s) => s.name).join(", ")}
-            </span>
-          </div>
-        )}
-
-        {/* Location & date */}
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-1.5 text-body-sm text-on-surface-variant">
-            <MapPin size={13} className="shrink-0" />
-            <span className="line-clamp-1">{session.location}</span>
-          </div>
-          <div className="flex items-center gap-1.5 font-mono text-label-sm text-on-surface-variant">
-            <CalendarDays size={12} className="shrink-0" />
-            <span>{format(new Date(session.startTime), "MMM d, yyyy")}</span>
-          </div>
-        </div>
-
-        {/* Capacity */}
-        {session.maxCapacity && (
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-1.5 rounded-full bg-surface-container-high overflow-hidden">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{
-                  width: `${Math.min(100, (session.attendeeCount / session.maxCapacity) * 100)}%`,
+        {/* Clickable area (everything except buttons) */}
+        <Link
+          to={`${basePath}/sessions/${session._id}`}
+          className="flex flex-col gap-3"
+          style={{ textDecoration: "none", color: "inherit" }}
+        >
+          {/* Top row */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <motion.span
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{
+                  type: "spring",
+                  stiffness: 300,
+                  delay: index * 0.04,
                 }}
-                transition={{ duration: 0.6, delay: index * 0.03 }}
                 className={cn(
-                  "h-full rounded-full",
-                  session.attendeeCount / session.maxCapacity >= 0.9
-                    ? "bg-error"
-                    : session.attendeeCount / session.maxCapacity >= 0.7
-                      ? "bg-warning"
-                      : "bg-secondary",
+                  "badge text-label-sm",
+                  FORMAT_BADGE[session.format] || "badge-neutral",
                 )}
-              />
+              >
+                {session.format}
+              </motion.span>
+              {isLive && (
+                <span className="badge badge-success gap-1 text-label-sm">
+                  <motion.span
+                    animate={{ opacity: [1, 0.3, 1] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                    className="h-1.5 w-1.5 rounded-full bg-success"
+                  />
+                  Live Now
+                </span>
+              )}
+              {session.isFeatured && (
+                <span className="badge badge-info gap-1 text-label-sm">
+                  <Star size={10} /> Featured
+                </span>
+              )}
+              {session.price > 0 && (
+                <span className="badge badge-warning text-label-sm">
+                  ${(session.price / 100).toFixed(2)}
+                </span>
+              )}
+              {isFull && !isRegistered && (
+                <span className="badge badge-error text-label-sm">Full</span>
+              )}
+              {session.status === "cancelled" && (
+                <span className="badge badge-error text-label-sm">Cancelled</span>
+              )}
             </div>
+
+            {/* Time */}
             <div className="flex items-center gap-1 font-mono text-label-sm text-on-surface-variant shrink-0">
-              <Users size={11} />
-              <span>
-                {session.attendeeCount ?? 0} / {session.maxCapacity}
-              </span>
+              <Clock size={11} />
+              <span>{format(new Date(session.startTime), "HH:mm")}</span>
+              <span>—</span>
+              <span>{format(new Date(session.endTime), "HH:mm")}</span>
             </div>
           </div>
-        )}
 
-        {/* Average Rating */}
-        {averageRating > 0 && (
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <div className="flex items-center gap-0.5">
-              <Star size={13} className="fill-warning text-warning" />
-              <span className="font-mono text-label-sm font-semibold text-on-surface">
-                {averageRating.toFixed(1)}
+          {/* Title */}
+          <h3 className="text-body-md font-semibold text-on-surface line-clamp-2 leading-snug group-hover:text-secondary transition-colors">
+            {session.title}
+          </h3>
+
+          {/* Speakers */}
+          {session.speakers?.length > 0 && (
+            <div className="flex items-center gap-1.5 text-body-sm text-on-surface-variant">
+              <Mic2 size={13} className="shrink-0" />
+              <span className="line-clamp-1">
+                {session.speakers.map((s) => s.name).join(", ")}
               </span>
             </div>
-            <span className="font-mono text-label-sm text-on-surface-variant">
-              ({feedbackCount || 0} {feedbackCount === 1 ? "review" : "reviews"}
-              )
-            </span>
-          </div>
-        )}
+          )}
 
-        {/* ✅ Actions - Stacked vertically */}
+          {/* Location & date */}
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-1.5 text-body-sm text-on-surface-variant">
+              <MapPin size={13} className="shrink-0" />
+              <span className="line-clamp-1">{session.location}</span>
+            </div>
+            <div className="flex items-center gap-1.5 font-mono text-label-sm text-on-surface-variant">
+              <CalendarDays size={12} className="shrink-0" />
+              <span>{format(new Date(session.startTime), "MMM d, yyyy")}</span>
+            </div>
+          </div>
+
+          {/* Capacity */}
+          {session.maxCapacity && (
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1.5 rounded-full bg-surface-container-high overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{
+                    width: `${Math.min(100, (session.attendeeCount / session.maxCapacity) * 100)}%`,
+                  }}
+                  transition={{ duration: 0.6, delay: index * 0.03 }}
+                  className={cn(
+                    "h-full rounded-full",
+                    session.attendeeCount / session.maxCapacity >= 0.9
+                      ? "bg-error"
+                      : session.attendeeCount / session.maxCapacity >= 0.7
+                        ? "bg-warning"
+                        : "bg-secondary",
+                  )}
+                />
+              </div>
+              <div className="flex items-center gap-1 font-mono text-label-sm text-on-surface-variant shrink-0">
+                <Users size={11} />
+                <span>
+                  {session.attendeeCount ?? 0} / {session.maxCapacity}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Average Rating */}
+          {averageRating > 0 && (
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <div className="flex items-center gap-0.5">
+                <Star size={13} className="fill-warning text-warning" />
+                <span className="font-mono text-label-sm font-semibold text-on-surface">
+                  {averageRating.toFixed(1)}
+                </span>
+              </div>
+              <span className="font-mono text-label-sm text-on-surface-variant">
+                ({feedbackCount || 0} {feedbackCount === 1 ? "review" : "reviews"}
+                )
+              </span>
+            </div>
+          )}
+        </Link>
+
+        {/* ✅ Actions - Stacked vertically (outside Link) */}
         <div className="flex flex-col gap-2 mt-auto">
           {isPastSes || session.status === "cancelled" ? (
             <>
@@ -346,12 +370,7 @@ function SessionCard({
                 <motion.button
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.99 }}
-                  onClick={() => {
-                    if (userFeedback) {
-                      setSelectedFeedback(userFeedback);
-                    }
-                    setShowFeedbackForm(true);
-                  }}
+                  onClick={handleFeedbackClick}
                   className="flex items-center justify-center gap-2 rounded-lg border border-outline-variant px-3 py-2.5 text-body-sm font-medium text-on-surface hover:bg-surface-container hover:border-secondary/30 transition-all duration-200 w-full"
                 >
                   {userFeedback ? (
@@ -376,7 +395,7 @@ function SessionCard({
               <motion.button
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
-                onClick={onUnregister}
+                onClick={handleUnregister}
                 disabled={isMutating}
                 className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-success bg-success-container/30 px-3 py-2.5 text-body-sm font-medium text-on-success-container hover:bg-error-container/30 hover:border-error hover:text-on-error-container transition-all duration-200"
               >
@@ -388,7 +407,7 @@ function SessionCard({
               <motion.button
                 whileHover={{ scale: 1.08 }}
                 whileTap={{ scale: 0.92 }}
-                onClick={onBookmark}
+                onClick={handleBookmark}
                 disabled={isMutating}
                 className={cn(
                   "rounded-lg border p-2.5 transition-all duration-200 shrink-0",
@@ -444,7 +463,7 @@ function SessionCard({
               <motion.button
                 whileHover={{ scale: 1.08 }}
                 whileTap={{ scale: 0.92 }}
-                onClick={onBookmark}
+                onClick={handleBookmark}
                 disabled={isMutating}
                 className={cn(
                   "rounded-lg border p-2.5 transition-all duration-200 shrink-0",
@@ -504,7 +523,6 @@ function SessionCard({
             setShowPaymentModal(false);
           }}
           onPayLater={() => {
-            // Keep transaction pending so user can pay within the 15-min window.
             setShowPaymentModal(false);
           }}
         />
@@ -716,6 +734,8 @@ function ExhibitorSessionsPaginated({
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function AttendeeSessions() {
   const { user } = useAuth();
+  const basePath = user?.role === "attendee" ? "/attendee" : "/events";
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [mutatingId, setMutatingId] = useState(null);
   const queryClient = useQueryClient();
@@ -842,6 +862,7 @@ export default function AttendeeSessions() {
       const { data } = await api.get("/sessions/me/registrations");
       return data.data.sessions;
     },
+    enabled: !!user,
   });
 
   const { data: myBookmarks = [] } = useQuery({
@@ -850,6 +871,7 @@ export default function AttendeeSessions() {
       const { data } = await api.get("/sessions/me/bookmarks");
       return data.data.sessions;
     },
+    enabled: !!user,
   });
 
   const registeredIds = useMemo(
@@ -952,6 +974,13 @@ const bookmarkMutation = useMutation({
   });
 
   const handleAction = (sessionId, action) => {
+    if (!user) {
+      const from = `${basePath}/sessions${expoId ? `?expoId=${expoId}` : ""}`;
+      toast("Please sign in to continue.", { icon: "🔒" });
+      navigate("/login", { state: { from } });
+      return;
+    }
+
     setMutatingId(sessionId);
     if (action === "register") registerMutation.mutate(sessionId);
     if (action === "unregister") unregisterMutation.mutate(sessionId);
@@ -1220,14 +1249,12 @@ const bookmarkMutation = useMutation({
                       session={session}
                       index={i}
                       expoId={expoId}
-                      queryClient={queryClient}
+                      basePath={basePath}
                       isRegistered={registeredIds.has(session._id)}
                       isBookmarked={bookmarkedIds.has(session._id)}
                       isMutating={mutatingId === session._id}
                       onRegister={() => handleAction(session._id, "register")}
-                      onUnregister={() =>
-                        handleAction(session._id, "unregister")
-                      }
+                      onUnregister={() => handleAction(session._id, "unregister")}
                       onBookmark={() => handleAction(session._id, "bookmark")}
                     />
                   ))}

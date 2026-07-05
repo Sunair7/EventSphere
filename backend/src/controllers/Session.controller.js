@@ -278,9 +278,10 @@ const getSessionById = async (req, res, next) => {
       return next(createError(400, 'Invalid session ID format.'));
     }
 
+    // ✅ Include attendees to get attendeeCount
     const session = await Session.findById(id)
-      .select('-attendees -bookmarkedBy')
-      .populate('expoId',    'title status startDate endDate')
+      .select('+attendees') // ✅ Include attendees
+      .populate('expoId', 'title status startDate endDate')
       .populate('createdBy', 'name email')
       .lean();
 
@@ -289,6 +290,9 @@ const getSessionById = async (req, res, next) => {
     if (!session.isPublic && req.user?.role !== 'admin') {
       return next(createError(403, 'This session is not publicly accessible.'));
     }
+
+    // ✅ Calculate attendeeCount
+    const attendeeCount = session.attendees?.length || 0;
 
     // Attach per-user flags
     let isRegistered = false;
@@ -304,15 +308,24 @@ const getSessionById = async (req, res, next) => {
       isBookmarked = !!bookmarkCheck;
     }
 
+    // ✅ Remove attendees from response (clean up)
+    const { attendees, ...sessionData } = session;
+
     return res.status(200).json({
       success: true,
-      data:    { session: { ...session, isRegistered, isBookmarked } },
+      data: {
+        session: {
+          ...sessionData,
+          attendeeCount, // ✅ Add attendeeCount
+          isRegistered,
+          isBookmarked,
+        },
+      },
     });
   } catch (err) {
     return next(err);
   }
 };
-
 // ─── @route   PUT /api/v1/sessions/:id ───────────────────────────────────────
 // @access  Admin
 const updateSession = async (req, res, next) => {

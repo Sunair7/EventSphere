@@ -11,6 +11,7 @@ import {
 import { format, isFuture, isPast, differenceInDays } from 'date-fns';
 import api                          from '@/utils/api';
 import { cn }                       from '@/utils/cn';
+import { useAuth }                  from '@/context/AuthContext';
 
 // ─── Animated Counter ─────────────────────────────────────────────────────────
 function CountUp({ end, duration = 1, suffix = '' }) {
@@ -178,11 +179,13 @@ function ExpoBanner({ banner, title, status, theme, startDate }) {
 }
 
 // ─── Expo card ────────────────────────────────────────────────────────────────
-function ExpoCard({ expo, index }) {
+function ExpoCard({ expo, index, basePath }) {
   const isOngoing   = expo.status === 'ongoing';
   const isCompleted = expo.status === 'completed';
   const startDate   = new Date(expo.startDate);
   const endDate     = new Date(expo.endDate);
+  // ✅ isPast is already imported at the top, so this works
+  const isPastEvent = isPast(endDate);
 
   return (
     <motion.div
@@ -191,11 +194,11 @@ function ExpoCard({ expo, index }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.3, delay: index * 0.05, ease: [0.4, 0, 0.2, 1] }}
-      whileHover={{ y: -4 }}
+      whileHover={!isCompleted ? { y: -4 } : {}}
       className={cn(
         'card flex flex-col hover:shadow-level-2 transition-all duration-300 group overflow-hidden rounded-xl',
         isOngoing   && 'ring-1 ring-success/20',
-        isCompleted && 'opacity-70 hover:opacity-90'
+        isCompleted && 'opacity-60 hover:opacity-70 border-outline-variant/50'
       )}
     >
       {/* Banner */}
@@ -208,8 +211,12 @@ function ExpoCard({ expo, index }) {
       />
 
       {/* Title */}
-      <h3 className="text-body-md font-semibold text-on-surface line-clamp-2 leading-snug
-                     group-hover:text-secondary transition-colors">
+      <h3 className={cn(
+        "text-body-md font-semibold line-clamp-2 leading-snug transition-colors",
+        isCompleted 
+          ? "text-on-surface-variant" 
+          : "text-on-surface group-hover:text-secondary"
+      )}>
         {expo.title}
       </h3>
 
@@ -236,6 +243,11 @@ function ExpoCard({ expo, index }) {
         <span>
           {format(startDate, 'MMM d')} — {format(endDate, 'MMM d, yyyy')}
         </span>
+        {isCompleted && (
+          <span className="ml-1.5 badge badge-neutral text-label-sm">
+            Ended
+          </span>
+        )}
       </div>
 
       {/* Stats */}
@@ -265,7 +277,10 @@ function ExpoCard({ expo, index }) {
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: index * 0.05 + i * 0.03 }}
-              className="badge badge-neutral text-label-sm"
+              className={cn(
+                "badge text-label-sm",
+                isCompleted ? "badge-neutral" : "badge-neutral"
+              )}
             >
               {tag}
             </motion.span>
@@ -277,19 +292,29 @@ function ExpoCard({ expo, index }) {
       )}
 
       {/* CTA */}
-      <Link
-        to={`/attendee/expos/${expo._id}`}
-        className="btn-secondary btn-sm gap-1.5 mt-auto group/btn"
-      >
-        Explore Event
-        <ArrowRight size={13} className="transition-transform group-hover/btn:translate-x-0.5" />
-      </Link>
+      {isCompleted ? (
+        <div className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-outline-variant 
+                        bg-surface-container px-4 py-2 text-body-sm font-medium text-on-surface-variant cursor-not-allowed">
+          <Clock size={14} />
+          Event Ended
+        </div>
+      ) : (
+        <Link
+          to={`${basePath}/expos/${expo._id}`}
+          className="btn-secondary btn-sm gap-1.5 mt-auto group/btn"
+        >
+          Explore Event
+          <ArrowRight size={13} className="transition-transform group-hover/btn:translate-x-0.5" />
+        </Link>
+      )}
     </motion.div>
   );
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function AttendeeExpos() {
+  const { user }                        = useAuth();
+  const basePath                        = user?.role === 'attendee' ? '/attendee' : '/events';
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTag, setActiveTag]       = useState('');
 
@@ -308,24 +333,40 @@ export default function AttendeeExpos() {
     });
   }, [setSearchParams]);
 
-  // ── Fetch expos ─────────────────────────────────────────────────────────────
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: expoKeys.list({ page, search, status, tag: activeTag, limit: LIMIT }),
-    queryFn:  async () => {
-      const params = new URLSearchParams({
-        page:  String(page),
-        limit: String(LIMIT),
-        sort:  status === 'completed' ? 'start-desc' : 'start-asc',
-      });
-      if (search)    params.set('search', search);
-      if (status)    params.set('status', status);
-      else           params.set('status', 'published,ongoing,completed');
-      if (activeTag) params.set('tags',   activeTag);
-      const { data } = await api.get(`/expos?${params}`);
-      return data.data;
-    },
-    keepPreviousData: true,
-  });
+ // ── Fetch expos ─────────────────────────────────────────────────────────────
+const { data, isLoading, isError, refetch } = useQuery({
+  queryKey: expoKeys.list({ page, search, status, tag: activeTag, limit: LIMIT }),
+  queryFn: async () => {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(LIMIT),
+      sort: status === 'completed' ? 'start-desc' : 'start-asc',
+    });
+    
+    if (search) params.set('search', search);
+    
+    // ✅ Status handling
+    if (status === 'completed') {
+      // Past Events tab - only show completed
+      params.set('status', 'completed');
+    } else if (status === 'ongoing') {
+      // Live Now tab - only show ongoing
+      params.set('status', 'ongoing');
+    } else if (status === 'published') {
+      // Upcoming tab - only show published
+      params.set('status', 'published');
+    } else {
+      // All Events tab - show published and ongoing (exclude completed)
+      params.set('status', 'published,ongoing');
+    }
+    
+    if (activeTag) params.set('tags', activeTag);
+    
+    const { data } = await api.get(`/expos?${params}`);
+    return data.data;
+  },
+  keepPreviousData: true,
+});
 
   const expos      = data?.expos      || [];
   const pagination = data?.pagination || {};
@@ -507,7 +548,7 @@ export default function AttendeeExpos() {
         <AnimatePresence mode="popLayout">
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {expos.map((expo, i) => (
-              <ExpoCard key={expo._id} expo={expo} index={i} />
+              <ExpoCard key={expo._id} expo={expo} index={i} basePath={basePath} />
             ))}
           </div>
         </AnimatePresence>

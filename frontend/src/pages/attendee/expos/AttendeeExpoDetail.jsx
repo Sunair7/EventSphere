@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, useInView } from "framer-motion";
 import {
@@ -167,8 +168,11 @@ function SessionPreviewCard({
   onFeedbackSubmit 
 }) {
   const isLive = session.status === "live";
+  const isCancelled = session.status === "cancelled";
+  const isCompleted = session.status === "completed";
   const isFull = session.maxCapacity && (session.attendeeCount ?? 0) >= session.maxCapacity;
-  const isPastSes = isPast(new Date(session.endTime)) && !isLive;
+  // ✅ Fixed: Check both completed status AND past end time
+  const isPastSes = isCompleted || (isPast(new Date(session.endTime)) && !isLive);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
   const [selectedFeedback, setSelectedFeedback] = useState(null);
 
@@ -179,7 +183,7 @@ function SessionPreviewCard({
       const { data } = await api.get(`/feedback/session/${session._id}`);
       return data.data;
     },
-    enabled: session.status === "completed",
+    enabled: isCompleted,
   });
 
   const avgRating = feedbackData?.stats?.average || 0;
@@ -197,31 +201,69 @@ function SessionPreviewCard({
       <motion.div
         initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
         transition={{ delay: index * 0.04, duration: 0.25 }} whileHover={{ y: -3 }}
-        className={cn("card flex flex-col gap-3 transition-all duration-200 hover:shadow-level-2", isLive && "border-success/30 bg-success-container/5", isPastSes && "opacity-60")}
+        className={cn(
+          "card flex flex-col gap-3 transition-all duration-200 hover:shadow-level-2",
+          isLive && "border-success/30 bg-success-container/5",
+          isPastSes && "opacity-60",
+          isCancelled && "opacity-50 border-error/30 bg-error-container/5"
+        )}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className={cn("badge text-label-sm", FORMAT_BADGE[session.format] || "badge-neutral")}>{session.format}</span>
-            {isLive && <span className="badge badge-success gap-1 text-label-sm"><motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="h-1.5 w-1.5 rounded-full bg-success" />Live</span>}
-            {isFull && !isRegistered && !isPastSes && <span className="badge badge-warning text-label-sm">Full</span>}
+            <span className={cn("badge text-label-sm", FORMAT_BADGE[session.format] || "badge-neutral")}>
+              {session.format}
+            </span>
+            {isLive && (
+              <span className="badge badge-success gap-1 text-label-sm">
+                <motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="h-1.5 w-1.5 rounded-full bg-success" />
+                Live
+              </span>
+            )}
+            {isCancelled && (
+              <span className="badge badge-error text-label-sm">Cancelled</span>
+            )}
+            {isCompleted && (
+              <span className="badge badge-neutral text-label-sm">Ended</span>
+            )}
+            {isFull && !isRegistered && !isPastSes && !isCancelled && (
+              <span className="badge badge-warning text-label-sm">Full</span>
+            )}
           </div>
-          <motion.button whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onClick={onBookmark} disabled={isMutating}
-            className={cn("rounded-lg p-1 transition-colors shrink-0", isBookmarked ? "text-tertiary bg-tertiary-container/30" : "text-on-surface-variant hover:text-tertiary hover:bg-surface-container")}
-            aria-label={isBookmarked ? "Remove bookmark" : "Bookmark"}>
+          <motion.button 
+            whileHover={{ scale: 1.15 }} 
+            whileTap={{ scale: 0.9 }} 
+            onClick={onBookmark} 
+            disabled={isMutating || isCancelled}
+            className={cn(
+              "rounded-lg p-1 transition-colors shrink-0",
+              isBookmarked ? "text-tertiary bg-tertiary-container/30" : "text-on-surface-variant hover:text-tertiary hover:bg-surface-container",
+              isCancelled && "opacity-40 cursor-not-allowed"
+            )}
+            aria-label={isBookmarked ? "Remove bookmark" : "Bookmark"}
+          >
             {isBookmarked ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
           </motion.button>
         </div>
         <h4 className="text-body-sm font-semibold text-on-surface line-clamp-2 leading-snug">{session.title}</h4>
         <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-1 font-mono text-label-sm text-on-surface-variant"><Clock size={11} className="shrink-0" /><span>{format(new Date(session.startTime), "MMM d, HH:mm")} — {format(new Date(session.endTime), "HH:mm")}</span></div>
-          <div className="flex items-center gap-1 font-mono text-label-sm text-on-surface-variant"><MapPin size={11} className="shrink-0" /><span className="line-clamp-1">{session.location}</span></div>
+          <div className="flex items-center gap-1 font-mono text-label-sm text-on-surface-variant">
+            <Clock size={11} className="shrink-0" />
+            <span>{format(new Date(session.startTime), "MMM d, HH:mm")} — {format(new Date(session.endTime), "HH:mm")}</span>
+          </div>
+          <div className="flex items-center gap-1 font-mono text-label-sm text-on-surface-variant">
+            <MapPin size={11} className="shrink-0" />
+            <span className="line-clamp-1">{session.location}</span>
+          </div>
         </div>
         {session.speakers?.length > 0 && (
-          <div className="flex items-center gap-1 font-mono text-label-sm text-on-surface-variant"><Mic2 size={11} className="shrink-0" /><span className="line-clamp-1">{session.speakers[0].name}{session.speakers.length > 1 && ` +${session.speakers.length - 1}`}</span></div>
+          <div className="flex items-center gap-1 font-mono text-label-sm text-on-surface-variant">
+            <Mic2 size={11} className="shrink-0" />
+            <span className="line-clamp-1">{session.speakers[0].name}{session.speakers.length > 1 && ` +${session.speakers.length - 1}`}</span>
+          </div>
         )}
 
         {/* Feedback display for completed sessions */}
-        {session.status === "completed" && (
+        {isCompleted && (
           <div className="mt-1 flex items-center gap-3">
             {totalReviews > 0 ? (
               <button 
@@ -245,17 +287,41 @@ function SessionPreviewCard({
           </div>
         )}
 
-        {!isPastSes && session.status !== "cancelled" && (isRegistered ? (
-          <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} onClick={onUnregister} disabled={isMutating}
-            className="flex items-center justify-center gap-1.5 rounded-lg border border-success bg-success-container/30 px-3 py-2 text-body-sm font-medium text-on-success-container hover:bg-error-container/20 hover:border-error hover:text-on-error-container transition-all duration-200 mt-1">
+        {/* ✅ Fixed: Handle all statuses properly */}
+        {isCancelled ? (
+          <div className="flex items-center justify-center gap-1.5 rounded-lg border border-error/30 bg-error-container/10 px-3 py-2 text-body-sm font-medium text-on-error-container mt-1">
+            <AlertCircle size={14} />
+            Session Cancelled
+          </div>
+        ) : isPastSes ? (
+          <div className="flex items-center justify-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container px-3 py-2 text-body-sm text-on-surface-variant mt-1">
+            <Clock size={14} />
+            Session ended
+          </div>
+        ) : isRegistered ? (
+          <motion.button 
+            whileHover={{ scale: 1.01 }} 
+            whileTap={{ scale: 0.99 }} 
+            onClick={onUnregister} 
+            disabled={isMutating}
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-success bg-success-container/30 px-3 py-2 text-body-sm font-medium text-on-success-container hover:bg-error-container/20 hover:border-error hover:text-on-error-container transition-all duration-200 mt-1"
+          >
             <CheckCircle2 size={14} /> Registered
           </motion.button>
         ) : (
-          <motion.button whileHover={!isFull ? { scale: 1.01 } : {}} whileTap={!isFull ? { scale: 0.99 } : {}} onClick={onRegister} disabled={isFull || isMutating}
-            className={cn("flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-body-sm font-medium transition-all mt-1", !isFull ? "btn-secondary" : "border border-outline-variant text-on-surface-variant cursor-not-allowed")}>
+          <motion.button 
+            whileHover={!isFull ? { scale: 1.01 } : {}} 
+            whileTap={!isFull ? { scale: 0.99 } : {}} 
+            onClick={onRegister} 
+            disabled={isFull || isMutating}
+            className={cn(
+              "flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-body-sm font-medium transition-all mt-1",
+              !isFull ? "btn-secondary" : "border border-outline-variant text-on-surface-variant cursor-not-allowed"
+            )}
+          >
             {isFull ? "Session Full" : isMutating ? "Registering…" : "Register Now"}
           </motion.button>
-        ))}
+        )}
       </motion.div>
 
       {/* Feedback Form Modal */}
@@ -298,6 +364,9 @@ function ExhibitorPreviewCard({ exhibitor, index }) {
 export default function AttendeeExpoDetail() {
   const { id } = useParams();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { user, isAuth } = useAuth();
+  const basePath = user?.role === "attendee" ? "/attendee" : "/events";
   const [mutatingId, setMutatingId] = useState(null);
 
   // ── Fetch expo ──────────────────────────────────────────────────────────────
@@ -351,11 +420,13 @@ export default function AttendeeExpoDetail() {
   const { data: myRegistrations = [] } = useQuery({
     queryKey: myRegKey,
     queryFn: async () => { const { data } = await api.get("/sessions/me/registrations"); return data.data.sessions; },
+    enabled: isAuth,
   });
 
   const { data: myBookmarks = [] } = useQuery({
     queryKey: myBmkKey,
     queryFn: async () => { const { data } = await api.get("/sessions/me/bookmarks"); return data.data.sessions; },
+    enabled: isAuth,
   });
 
   const registeredIds = useMemo(() => new Set(myRegistrations.map((s) => s._id)), [myRegistrations]);
@@ -381,6 +452,11 @@ export default function AttendeeExpoDetail() {
   });
 
   const handleAction = (sessionId, action) => {
+    if (!isAuth) {
+      toast("Please sign in to continue.", { icon: "🔒" });
+      navigate("/login", { state: { from: `${basePath}/expos/${id}` } });
+      return;
+    }
     setMutatingId(sessionId);
     if (action === "register") registerMutation.mutate(sessionId);
     if (action === "unregister") unregisterMutation.mutate(sessionId);
@@ -393,7 +469,7 @@ export default function AttendeeExpoDetail() {
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="empty-state py-20">
         <motion.div animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 0.5, delay: 0.3 }} className="empty-state-icon text-error"><AlertCircle size={28} /></motion.div>
         <h3 className="empty-state-title">Event not found</h3>
-        <Link to="/attendee/expos" className="btn-ghost btn-sm mt-3 gap-1.5"><ArrowLeft size={14} /> Browse Events</Link>
+        <Link to={`${basePath}/expos`} className="btn-ghost btn-sm mt-3 gap-1.5"><ArrowLeft size={14} /> Browse Events</Link>
       </motion.div>
     );
   }
@@ -411,7 +487,7 @@ export default function AttendeeExpoDetail() {
 
       <div className="flex flex-col gap-8">
         <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
-          <Link to="/attendee/expos" className="btn-ghost btn-sm gap-1.5 self-start"><ArrowLeft size={15} /> All Events</Link>
+          <Link to={`${basePath}/expos`} className="btn-ghost btn-sm gap-1.5 self-start"><ArrowLeft size={15} /> All Events</Link>
         </motion.div>
 
         {expoLoading ? <HeroSkeleton /> : expo && (
@@ -438,7 +514,7 @@ export default function AttendeeExpoDetail() {
               <div className="flex items-center gap-2 flex-wrap"><Tag size={13} className="text-on-surface-variant" />{expo.tags.map((tag, i) => (<motion.span key={tag} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.03 }} className="badge badge-neutral">{tag}</motion.span>))}</div>
             )}
             <div className="flex flex-wrap gap-3">
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}><Link to={`/attendee/sessions?expoId=${id}`} className="btn-secondary gap-2 inline-flex"><BookOpen size={15} /> Browse Sessions</Link></motion.div>
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}><Link to={`${basePath}/sessions?expoId=${id}`} className="btn-secondary gap-2 inline-flex"><BookOpen size={15} /> Browse Sessions</Link></motion.div>
               <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}><Link to="/attendee/exhibitors" className="btn-ghost gap-2 inline-flex"><Building2 size={15} /> View Exhibitors</Link></motion.div>
             </div>
           </motion.div>
@@ -464,7 +540,7 @@ export default function AttendeeExpoDetail() {
         <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-headline-sm font-semibold text-on-surface flex items-center gap-2"><Star size={17} className="text-secondary" />Session Highlights</h2>
-            <Link to={`/attendee/sessions?expoId=${id}`} className="btn-tertiary btn-sm gap-1 group/link">All sessions<ArrowRight size={13} className="transition-transform group-hover/link:translate-x-0.5" /></Link>
+            <Link to={`${basePath}/sessions?expoId=${id}`} className="btn-tertiary btn-sm gap-1 group/link">All sessions<ArrowRight size={13} className="transition-transform group-hover/link:translate-x-0.5" /></Link>
           </div>
           {sessionsLoading ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">{Array.from({ length: 3 }).map((_, i) => <SessionCardSkeleton key={i} />)}</div>
@@ -494,7 +570,7 @@ export default function AttendeeExpoDetail() {
             </div>
           )}
           {(sessionsData?.pagination?.total ?? 0) > 6 && (
-            <Link to={`/attendee/sessions?expoId=${id}`} className="mt-4 flex items-center justify-center gap-1.5 rounded-lg border border-outline-variant py-3 text-body-sm font-medium text-on-surface-variant hover:bg-surface-container hover:text-on-surface hover:border-secondary/30 transition-all duration-200">
+            <Link to={`${basePath}/sessions?expoId=${id}`} className="mt-4 flex items-center justify-center gap-1.5 rounded-lg border border-outline-variant py-3 text-body-sm font-medium text-on-surface-variant hover:bg-surface-container hover:text-on-surface hover:border-secondary/30 transition-all duration-200">
               View all {sessionsData.pagination.total} sessions<ChevronRight size={15} />
             </Link>
           )}

@@ -117,6 +117,16 @@ api.interceptors.response.use(
       !originalRequest.url?.includes('/auth/refresh-token') &&
       !originalRequest.url?.includes('/auth/login')
     ) {
+      // Only a request that was actually sent with an access token represents
+      // a genuine "your session expired" case. A guest browsing public pages
+      // (no token attached) may still hit a protected endpoint incidentally —
+      // that should fail quietly, not force-redirect an anonymous visitor.
+      const hadToken = !!originalRequest.headers?.Authorization;
+
+      if (!hadToken) {
+        return Promise.reject(error);
+      }
+
       if (isRefreshingToken) {
         return new Promise((resolve, reject) => {
           pendingRequestsQueue.push({ resolve, reject });

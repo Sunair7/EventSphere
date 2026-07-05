@@ -152,12 +152,24 @@ const getExpos = async (req, res, next) => {
     const isAdmin = req.user?.role === 'admin';
     const filter  = {};
 
-    // Non-admins only see public published/ongoing expos
-    if (!isAdmin) {
-      filter.isPublic = true;
-      filter.status   = { $in: ['published', 'ongoing'] };
-    } else if (status) {
-      filter.status = { $in: status.split(',').map((s) => s.trim()) };
+    // ✅ Handle status filter properly
+    if (isAdmin) {
+      // Admin can see all statuses
+      if (status) {
+        filter.status = { $in: status.split(',').map((s) => s.trim()) };
+      }
+    } else {
+      // Non-admin (attendee) - respect the status filter
+      if (status) {
+        // If status is provided, use it
+        const statuses = status.split(',').map((s) => s.trim());
+        filter.status = { $in: statuses };
+        filter.isPublic = true;
+      } else {
+        // Default: show published and ongoing only (EXCLUDE completed)
+        filter.isPublic = true;
+        filter.status   = { $in: ['published', 'ongoing'] };
+      }
     }
 
     // Date range filter
